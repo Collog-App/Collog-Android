@@ -1,11 +1,15 @@
 package live.collog.app
 
 import android.content.SharedPreferences
+import java.util.Collections
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import live.collog.app.config.AppEnvironment
@@ -85,8 +89,9 @@ class MemoryPreferences : SharedPreferences {
 class TestEnvironment(role: String = "PARENT", familyId: String? = "family") {
     val preferences = MemoryPreferences()
     val credentials = MemoryCredentials()
-    val paths = mutableListOf<String>()
-    val requests = mutableListOf<Request>()
+    // OkHttp가 자기 스레드에서 요청을 기록하므로 동기화된 목록을 쓴다.
+    val paths: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    val requests: MutableList<Request> = Collections.synchronizedList(mutableListOf())
     var respond: (Request) -> Pair<Int, String> = { request ->
         fail("Unexpected request ${request.url.encodedPath}")
         error("unreachable")
@@ -131,6 +136,15 @@ class TestEnvironment(role: String = "PARENT", familyId: String? = "family") {
             family = FamilyStore(),
             http = http,
         )
+    }
+
+    /** 백그라운드에서 나간 요청이 기록될 때까지 실제 시간으로 기다린다(최대 [timeoutMillis]). */
+    suspend fun awaitPath(path: String, timeoutMillis: Long = 2_000) {
+        withContext(Dispatchers.Default) {
+            withTimeout(timeoutMillis) {
+                while (path !in paths.toList()) delay(10)
+            }
+        }
     }
 
     fun cleanUp() {
