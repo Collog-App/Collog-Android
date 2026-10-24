@@ -47,8 +47,10 @@ class CollogApi(val client: CollogApiClient) {
             ),
         )
 
+    /** Android는 FCM 토큰 하나를 [token]·[voipToken]·[pushToken]에 같이 넣는다(서버가 플랫폼으로 발송 경로를 고른다). */
     suspend fun registerDevice(
         token: String,
+        voipToken: String?,
         callNotificationsEnabled: Boolean = true,
         pushToken: String? = null,
         reportNotificationsEnabled: Boolean = true,
@@ -61,7 +63,7 @@ class CollogApi(val client: CollogApiClient) {
                     DeviceCreateBody(
                         platform = "ANDROID",
                         token = token,
-                        voipToken = null,
+                        voipToken = voipToken,
                         callNotificationsEnabled = callNotificationsEnabled,
                         pushToken = pushToken,
                         reportNotificationsEnabled = reportNotificationsEnabled,

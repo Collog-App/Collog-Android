@@ -1,5 +1,8 @@
 package live.collog.app.app
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -17,6 +20,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +34,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -39,6 +48,14 @@ import live.collog.app.features.auth.views.InvitationAcceptScreen
 import live.collog.app.features.auth.views.LoginScreen
 import live.collog.app.features.auth.views.OnboardingScreen
 import live.collog.app.features.call.models.CallPhase
+import live.collog.app.features.call.services.CallCenter
+import live.collog.app.features.call.services.LocalCallCenter
+import live.collog.app.features.call.services.registerDeviceIfPossible
+import live.collog.app.features.call.services.resumePendingUploads
+import live.collog.app.features.call.services.toggleMute
+import live.collog.app.features.call.services.toggleSpeaker
+import live.collog.app.features.call.services.updateNotificationAuthorization
+import live.collog.app.features.call.services.updateQuestionVoicePreference
 import live.collog.app.features.call.viewmodels.CallLauncherModel
 import live.collog.app.features.call.views.CallLauncherOverlay
 import live.collog.app.features.call.views.CallScreen
@@ -56,11 +73,14 @@ import live.collog.app.shared.navigation.TabManager
 import live.collog.app.shared.ui.Haptics
 import live.collog.app.shared.ui.OnChange
 import live.collog.app.shared.ui.designsystem.CollogColors
+import live.collog.app.shared.ui.designsystem.CollogType
 
 /** iOS `RootView`. 인증 단계에 따라 화면을 고르고, 준비되면 탭 화면과 통화 화면을 띄운다. */
 @Composable
 fun RootScreen() {
     val environment = LocalAppEnvironment.current
+    val callCenter = LocalCallCenter.current
+    val context = LocalContext.current
     val tabManager = remember { TabManager() }
     var navigation by remember { mutableStateOf(NavigationStore()) }
     val authFlow = remember { AuthFlowViewModel() }
@@ -98,12 +118,21 @@ fun RootScreen() {
             startSimulatedCall(contact)
             return
         }
-        // TODO(call): CallCenter.startOutgoingCall 연결
+        val userId = contact.userId ?: return
+        callCenter.startOutgoingCall(
+            calleeId = userId,
+            name = contact.name,
+            questions = environment.family.questions(contact).map { it.text },
+        )
     }
 
     LaunchedEffect(Unit) { authFlow.resolve(environment) }
     OnChange(environment.session.isAuthenticated) { _, authenticated ->
-        if (!authenticated) launcher.dismiss()
+        callCenter.sessionDidChange()
+        if (!authenticated) {
+            callCenter.endActiveCall()
+            launcher.dismiss()
+        }
         authFlow.resolve(environment)
     }
     OnChange(environment.settings.isGuestMode) { _, _ ->
@@ -111,6 +140,7 @@ fun RootScreen() {
         authFlow.resolve(environment)
     }
     OnChange(environment.session.user) { previous, current ->
+        callCenter.sessionDidChange()
         if (previous == null || current == null) return@OnChange
         if (previous.role == current.role && previous.familyId == current.familyId) return@OnChange
         launcher.dismiss()
@@ -118,11 +148,21 @@ fun RootScreen() {
         tabManager.selectedTab = MainTab.Home
         authFlow.resolve(environment)
     }
+    OnChange(environment.settings.callNotificationsEnabled) { _, _ -> callCenter.registerDeviceIfPossible() }
+    OnChange(environment.settings.reportNotificationsEnabled) { _, _ -> callCenter.updateNotificationAuthorization() }
+    OnChange(environment.settings.questionVoiceEnabled) { _, _ -> callCenter.updateQuestionVoicePreference() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        if (environment.session.isAuthenticated) {
+            callCenter.resumePendingUploads()
+            callCenter.updateNotificationAuthorization()
+        }
+    }
     OnChange(environment.reportNotificationRevision) { _, _ ->
         navigation.popToRoot(MainTab.Report)
         tabManager.selectedTab = MainTab.Report
     }
 
+    CallErrorAlert(callCenter)
     CompositionLocalProvider(LocalTabManager provides tabManager, LocalNavigationStore provides navigation) {
         Box(Modifier.fillMaxSize().background(CollogColors.gray50)) {
             Crossfade(authFlow.step, animationSpec = tween(200), label = "auth") { step ->
@@ -132,7 +172,11 @@ fun RootScreen() {
                         environment.settings.onboardingCompleted = true
                         resolve()
                     }
-                    AuthFlowViewModel.Step.Login -> LoginScreen { resolve() }
+                    AuthFlowViewModel.Step.Login -> LoginScreen {
+                        callCenter.registerDeviceIfPossible()
+                        if (environment.session.isAuthenticated) callCenter.updateNotificationAuthorization()
+                        resolve()
+                    }
                     AuthFlowViewModel.Step.Consent -> ConsentScreen(onAgreed = { resolve() })
                     AuthFlowViewModel.Step.Invitation -> InvitationAcceptScreen { resolve() }
                     AuthFlowViewModel.Step.Profile -> HealthProfileSetupScreen { resolve() }
@@ -155,8 +199,21 @@ fun RootScreen() {
                 }
             }
 
+            val activeCall = callCenter.activeCall
             AnimatedVisibility(
-                visible = simulatedContact != null,
+                visible = activeCall != null,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+            ) {
+                if (activeCall != null) {
+                    // iOS fullScreenCover처럼 통화 화면은 뒤로 가기로 닫히지 않는다.
+                    BackHandler {}
+                    ActiveCallScreen(callCenter, activeCall)
+                }
+            }
+
+            AnimatedVisibility(
+                visible = activeCall == null && simulatedContact != null,
                 enter = slideInVertically { it } + fadeIn(),
                 exit = slideOutVertically { it } + fadeOut(),
             ) {
@@ -247,4 +304,59 @@ private fun MainTabs(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
         )
     }
+}
+
+@Composable
+private fun ActiveCallScreen(callCenter: CallCenter, call: CallCenter.ActiveCall) {
+    key(call.id) {
+        CallScreen(
+            peerName = call.peerName,
+            phase = call.phase,
+            questions = call.questions,
+            notice = callCenter.incomingAnswerError ?: call.notice,
+            isIncoming = call.direction == CallCenter.Direction.Incoming && call.phase == CallPhase.Ringing,
+            isAnswering = callCenter.incomingAnswerRequested,
+            canAnswer = callCenter.canAnswerIncomingCall,
+            onAnswer = { callCenter.answerIncomingCall() },
+            recordingEnabled = call.recordingEnabled,
+            isMuted = call.isMuted,
+            isSpeakerEnabled = call.isSpeakerEnabled,
+            onMute = { callCenter.toggleMute() },
+            onSpeaker = { callCenter.toggleSpeaker() },
+            onEnd = { callCenter.endActiveCall() },
+        )
+    }
+}
+
+/** iOS `.alert("통화를 진행할 수 없어요")`. 마이크가 거부됐으면 앱 설정으로 보낸다. */
+@Composable
+private fun CallErrorAlert(callCenter: CallCenter) {
+    val message = callCenter.callError ?: return
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = { callCenter.callError = null },
+        title = { Text("통화를 진행할 수 없어요", style = CollogType.body01Semibold, color = CollogColors.gray900) },
+        text = { Text(message, style = CollogType.body02Regular, color = CollogColors.gray800) },
+        confirmButton = {
+            TextButton(onClick = { callCenter.callError = null }) {
+                Text("확인", style = CollogType.body02Semibold, color = CollogColors.blue600)
+            }
+        },
+        dismissButton = if (callCenter.needsMicrophoneSettings) {
+            {
+                TextButton(onClick = {
+                    callCenter.callError = null
+                    context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }) {
+                    Text("설정으로 이동", style = CollogType.body02Semibold, color = CollogColors.blue600)
+                }
+            }
+        } else {
+            null
+        },
+        containerColor = CollogColors.gray00,
+    )
 }
