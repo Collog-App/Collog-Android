@@ -45,6 +45,7 @@
 ## 테스트
 
 `collog-iosTests/`의 해당 테스트를 `app/src/test/java/live/collog/app/...`에 JUnit4로 옮긴다. 네트워크·운영 서버는 부르지 않는다.
+iOS `TestEnvironment`·`MemoryCredentials`는 `app/src/test/java/live/collog/app/TestEnvironment.kt`에 있다(`fixture.respond = { request -> 200 to json }`, `fixture.paths`). 쓰는 법은 `features/auth/AuthFlowTests.kt`를 본다.
 
 ```bash
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17
