@@ -20,12 +20,23 @@ object GoogleSignIn {
 
     class Cancelled : Exception()
 
-    val isConfigured: Boolean get() = BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank()
+    /**
+     * 서버가 ID 토큰 aud로 검사하는 Web OAuth 클라이언트 ID.
+     * google-services.json이 있으면 Google 플러그인이 만든 `default_web_client_id`를 쓰고,
+     * 없으면 Gradle 속성 `collog.googleWebClientId` 값을 쓴다.
+     */
+    fun webClientId(context: Context): String {
+        @Suppress("DiscouragedApi")
+        val generated = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+        if (generated != 0) return context.getString(generated)
+        return BuildConfig.GOOGLE_WEB_CLIENT_ID
+    }
 
     /** [activityContext]는 Activity여야 계정 선택 창이 뜬다. */
     suspend fun requestIdToken(activityContext: Context, nonce: String): Result {
-        if (!isConfigured) throw ApiError.Transport("Google 로그인 설정이 아직 없어요. 관리자에게 알려주세요.")
-        val option = GetSignInWithGoogleOption.Builder(serverClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID)
+        val clientId = webClientId(activityContext)
+        if (clientId.isBlank()) throw ApiError.Transport("Google 로그인 설정이 아직 없어요. 관리자에게 알려주세요.")
+        val option = GetSignInWithGoogleOption.Builder(serverClientId = clientId)
             .setNonce(nonce)
             .build()
         val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
