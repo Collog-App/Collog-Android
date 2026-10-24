@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -25,10 +26,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogType
+
+/**
+ * iOS `.buttonStyle(.plain)` 버튼: 물결 효과 없이 누르는 동안 흐려진다.
+ * 화면 버튼은 기본적으로 이것을 쓴다(Material ripple을 쓰지 않는다).
+ */
+fun Modifier.pressable(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    graphicsLayer { alpha = if (pressed) 0.5f else 1f }
+        .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+}
 
 /** iOS `Picker(...).pickerStyle(.segmented)`와 비슷한 모양. */
 @Composable
