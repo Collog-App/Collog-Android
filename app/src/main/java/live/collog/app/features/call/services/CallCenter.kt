@@ -17,6 +17,9 @@ class CallCenter(val environment: AppEnvironment) {
         internal set
     var hasCallInProgress by mutableStateOf(false)
         internal set
+
+    /** iOS `startOutgoingCall(calleeId:name:questions:)`. */
+    fun startOutgoingCall(calleeId: String, name: String, questions: List<String>) {}
 }
 
 val LocalCallCenter = staticCompositionLocalOf<CallCenter> { error("CallCenter가 제공되지 않았어요") }

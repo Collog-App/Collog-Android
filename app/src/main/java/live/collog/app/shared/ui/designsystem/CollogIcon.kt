@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
@@ -90,6 +91,7 @@ fun sfSymbol(name: String): ImageVector = when (name) {
     "speaker.wave.3.fill" -> Icons.AutoMirrored.Filled.VolumeUp
     "stethoscope" -> Icons.Outlined.MedicalServices
     "text.bubble" -> Icons.Outlined.ChatBubbleOutline
+    "waveform" -> Icons.Filled.GraphicEq
     else -> {
         Log.w("Collog", "SF Symbol 대응 없음: $name")
         Icons.AutoMirrored.Filled.Chat
