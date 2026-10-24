@@ -133,7 +133,7 @@ fun RootScreen() {
                         resolve()
                     }
                     AuthFlowViewModel.Step.Login -> LoginScreen { resolve() }
-                    AuthFlowViewModel.Step.Consent -> ConsentScreen { resolve() }
+                    AuthFlowViewModel.Step.Consent -> ConsentScreen(onAgreed = { resolve() })
                     AuthFlowViewModel.Step.Invitation -> InvitationAcceptScreen { resolve() }
                     AuthFlowViewModel.Step.Profile -> HealthProfileSetupScreen { resolve() }
                     AuthFlowViewModel.Step.Ready -> {

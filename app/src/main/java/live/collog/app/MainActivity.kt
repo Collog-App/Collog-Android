@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import live.collog.app.app.RootScreen
 import live.collog.app.config.LocalAppEnvironment
+import live.collog.app.features.call.services.LocalCallCenter
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,9 +18,12 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
-        val environment = (application as CollogApplication).environment
+        val app = application as CollogApplication
         setContent {
-            CompositionLocalProvider(LocalAppEnvironment provides environment) {
+            CompositionLocalProvider(
+                LocalAppEnvironment provides app.environment,
+                LocalCallCenter provides app.callCenter,
+            ) {
                 RootScreen()
             }
         }
