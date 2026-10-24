@@ -74,6 +74,8 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.livekit.android)
     implementation(libs.androidx.core.telecom)
+    // 의존성이 끌어오는 옛 fragment(<1.3) 대신: registerForActivityResult 요구 사항
+    implementation(libs.androidx.fragment)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
 
