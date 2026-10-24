@@ -6,6 +6,7 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -285,7 +286,12 @@ private fun MainTabs(
             }
         }
 
-        if (launcher.isPresented) {
+        // 열릴 때는 오버레이가 자기 애니메이션을 돌리고, 닫힐 때만 여기서 서서히 지운다.
+        AnimatedVisibility(
+            visible = launcher.isPresented,
+            enter = EnterTransition.None,
+            exit = fadeOut(tween(160)),
+        ) {
             CallLauncherOverlay(
                 model = launcher,
                 anchorInset = BottomNavBar.anchorInset,
