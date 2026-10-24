@@ -81,6 +81,7 @@ class CallCenter(
     internal var pushToken: String? = null
     internal var room: Room? = null
     internal val systemCalls = mutableSetOf<UUID>()
+    internal val systemAnswered = mutableSetOf<UUID>()
     internal val answeredCallIds = mutableSetOf<String>()
     internal val answeringCallIds = mutableSetOf<String>()
     internal var serverAccepted = false
@@ -110,6 +111,8 @@ class CallCenter(
     internal var microphoneReady = false
 
     fun start() {
+        // 울리던 중 프로세스가 죽었으면 남은 수신 알림을 지운다(새 수신 푸시는 이 뒤에 처리된다).
+        platform.cancelIncoming()
         AnalysisPcmWriter.purgeAbandonedRecordings(platform.analysisDirectory)
         environment.beforeSignOut = { prepareSignOut() }
         if (environment.session.isAuthenticated) updateNotificationAuthorization()
@@ -176,6 +179,8 @@ class CallCenter(
                 failCall(pending.uuid, "통화하려면 휴대폰 설정에서 마이크를 허용해주세요", microphone = true)
                 return@launch
             }
+            // 화면이 앞에 있을 때 시작해야 마이크 포그라운드 서비스가 허용된다.
+            platform.startOngoing(name)
             val added = platform.callSystem.add(
                 SystemCall(pending.uuid, name, calleeId, incoming = false),
                 systemEvents(pending.uuid),
@@ -194,7 +199,7 @@ class CallCenter(
         try {
             val created = environment.api.createCall(pending.calleeId)
             if (pendingOutgoing?.uuid != pending.uuid) {
-                runCatching { environment.api.endCall(created.callId) }
+                endQuietly(created.callId)
                 return
             }
             val call = ActiveCall(
@@ -211,7 +216,6 @@ class CallCenter(
             activeCall = call
             serverQuestions = created.questions
             rawCaptureRequired = created.rawCaptureRequired ?: false
-            platform.startOngoing(call)
             monitorCall(created.callId)
 
             connectMedia(
@@ -259,7 +263,9 @@ class CallCenter(
                 failCall(uuid, "통화하려면 휴대폰 설정에서 마이크를 허용해주세요", microphone = true)
                 return
             }
-            if (!fromSystem && uuid in systemCalls && !platform.callSystem.answer(uuid)) {
+            if (!fromSystem && uuid in systemCalls && uuid !in systemAnswered &&
+                !platform.callSystem.answer(uuid)
+            ) {
                 if (activeCall?.uuid == uuid) {
                     incomingAnswerRequested = false
                     incomingAnswerError = "전화를 받지 못했어요. 다시 시도해주세요."
@@ -269,11 +275,11 @@ class CallCenter(
             }
             platform.cancelIncoming()
             updateCall { it.copy(phase = CallPhase.Connecting) }
-            activeCall?.let(platform::startOngoing)
+            platform.startOngoing(call.peerName)
             activateAudio()
             val accepted = acceptCallWithRetry(call.id, requestId)
             if (activeCall?.id != call.id) {
-                runCatching { environment.api.endCall(call.id) }
+                endQuietly(call.id)
                 return
             }
             answeredCallIds += call.id
@@ -320,9 +326,41 @@ class CallCenter(
         return environment.api.acceptCall(callId, requestId)
     }
 
-    fun endActiveCall() {
-        val uuid = activeCall?.uuid ?: pendingOutgoing?.uuid ?: return
-        scope.launch { performEnd(uuid, fromSystem = false) }
+    fun endActiveCall(): Job? {
+        val uuid = activeCall?.uuid ?: pendingOutgoing?.uuid ?: return null
+        return scope.launch { performEnd(uuid, fromSystem = false) }
+    }
+
+    /** 알림이 가리키는 통화가 이미 없을 때(프로세스가 다시 시작됨 등) 서버에 거절만 알린다. */
+    fun declineStaleCall(callId: String): Job? {
+        platform.cancelIncoming()
+        if (activeCall?.id == callId || !environment.session.isAuthenticated) return null
+        return scope.launch {
+            try {
+                environment.api.declineCall(callId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                log("수신 거절 실패: ${error.message}")
+            }
+        }
+    }
+
+    /** 가리키는 통화가 없는 알림·서비스를 내린다. */
+    fun clearStaleNotifications() {
+        if (hasCallInProgress) return
+        platform.cancelIncoming()
+        platform.stopOngoing()
+    }
+
+    private suspend fun endQuietly(callId: String) {
+        try {
+            environment.api.endCall(callId)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            log("종료 보고 실패: ${error.message}")
+        }
     }
 
     /** iOS `CXEndCallAction` 처리. 받기 전의 수신은 거절로, 그 밖은 종료로 서버에 알린다. */
@@ -356,6 +394,7 @@ class CallCenter(
     internal fun systemEvents(uuid: UUID) = object : SystemCallEvents {
         // Telecom 콜백은 5초 안에 끝나야 하므로 실제 처리는 따로 돌린다.
         override suspend fun onAnswer() {
+            systemAnswered += uuid
             scope.launch { performAnswer(uuid, fromSystem = true) }
         }
 
@@ -372,6 +411,11 @@ class CallCenter(
     }
 
     fun teardown() {
+        // 원인을 따로 알리지 않은 채 남은 시스템 통화(발신 준비 중 로그아웃 등)는 여기서 내린다.
+        val call = activeCall
+        if (call != null && call.isSpeakerEnabled && call.uuid !in systemCalls) platform.setSpeakerFallback(false)
+        systemCalls.toList().forEach { reportEnded(it, EndCause.Local) }
+        systemAnswered.clear()
         platform.stopQuestions()
         serverQuestions = emptyList()
         spokenCallId = null

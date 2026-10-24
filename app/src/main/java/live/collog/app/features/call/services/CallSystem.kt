@@ -10,6 +10,7 @@ import androidx.core.telecom.CallControlScope
 import androidx.core.telecom.CallEndpointCompat
 import androidx.core.telecom.CallsManager
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -44,7 +45,10 @@ data class SystemCall(
 
 interface SystemCallEvents {
     suspend fun onAnswer()
+
+    /** 시스템이 통화를 끊었거나 Telecom 세션이 비정상으로 끝났다(iOS `providerDidReset` 포함). */
     suspend fun onDisconnect()
+
     fun onMuteChanged(muted: Boolean)
 }
 
@@ -74,6 +78,7 @@ class TelecomCallSystem(context: Context, private val scope: CoroutineScope) : C
     override suspend fun add(call: SystemCall, events: SystemCallEvents): Boolean {
         if (!isRegistered) return false
         val ready = CompletableDeferred<Boolean>()
+        val abandoned = AtomicBoolean(false)
         val attributes = CallAttributesCompat(
             displayName = call.displayName,
             address = Uri.fromParts("collog", call.address, null),
@@ -91,19 +96,37 @@ class TelecomCallSystem(context: Context, private val scope: CoroutineScope) : C
                 manager.addCall(
                     attributes,
                     onAnswer = { events.onAnswer() },
-                    onDisconnect = { events.onDisconnect() },
+                    onDisconnect = {
+                        events.onDisconnect()
+                        // 끊긴 세션의 흐름은 끝나지 않으므로(채널이 닫히지 않음) 직접 정리한다.
+                        scope.launch { sessions.remove(call.id)?.cancel() }
+                    },
                     onSetActive = {},
                     onSetInactive = {},
                 ) {
+                    if (abandoned.get()) {
+                        // 앱이 기다리다 포기한 뒤에 늦게 올라온 통화는 바로 내린다.
+                        launch { disconnect(DisconnectCause(DisconnectCause.LOCAL)) }
+                        return@addCall
+                    }
                     controls[call.id] = this
-                    launch { isMuted.collect { events.onMuteChanged(it) } }
+                    launch {
+                        // Telecom은 경로가 바뀔 때마다 같은 음소거 값을 다시 보낸다.
+                        // 처음 값과 반복값은 무시하고, 시스템에서 실제로 바뀐 때만 알린다.
+                        var last: Boolean? = null
+                        isMuted.collect { muted ->
+                            if (last != null && last != muted) events.onMuteChanged(muted)
+                            last = muted
+                        }
+                    }
                     launch { availableEndpoints.collect { endpoints[call.id] = it } }
                     ready.complete(true)
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                Log.w(TAG, "Telecom 통화 추가 실패", error)
+                Log.w(TAG, "Telecom 통화 세션 실패", error)
+                if (ready.isCompleted && controls.containsKey(call.id)) events.onDisconnect()
             } finally {
                 ready.complete(false)
                 controls.remove(call.id)
@@ -111,7 +134,9 @@ class TelecomCallSystem(context: Context, private val scope: CoroutineScope) : C
                 sessions.remove(call.id)
             }
         }
-        return withTimeoutOrNull(ADD_TIMEOUT_MILLIS) { ready.await() } ?: false
+        val added = withTimeoutOrNull(ADD_TIMEOUT_MILLIS) { ready.await() } ?: false
+        if (!added) abandoned.set(true)
+        return added
     }
 
     override suspend fun answer(id: UUID): Boolean =
@@ -122,25 +147,32 @@ class TelecomCallSystem(context: Context, private val scope: CoroutineScope) : C
 
     override suspend fun disconnect(id: UUID, cause: EndCause) {
         val control = controls[id]
-        if (control == null) {
-            sessions.remove(id)?.cancel()
-            return
+        if (control != null) {
+            try {
+                control.disconnect(DisconnectCause(cause.code))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "Telecom 통화를 내리지 못했어요", error)
+            }
         }
-        runCatching { control.disconnect(DisconnectCause(cause.code)) }
+        sessions.remove(id)?.cancel()
     }
 
     override suspend fun setSpeaker(id: UUID, enabled: Boolean): Boolean {
         val control = controls[id] ?: return false
-        val wanted = if (enabled) CallEndpointCompat.TYPE_SPEAKER else CallEndpointCompat.TYPE_EARPIECE
         val available = endpoints[id].orEmpty()
-        val target = available.firstOrNull { it.type == wanted }
-            ?: if (!enabled) {
-                available.firstOrNull {
-                    it.type == CallEndpointCompat.TYPE_BLUETOOTH || it.type == CallEndpointCompat.TYPE_WIRED_HEADSET
-                }
-            } else {
-                null
-            }
+        // 끌 때는 iOS(`overrideOutputAudioPort(.none)`)처럼 연결된 헤드셋으로 먼저 돌아간다.
+        val preference = if (enabled) {
+            listOf(CallEndpointCompat.TYPE_SPEAKER)
+        } else {
+            listOf(
+                CallEndpointCompat.TYPE_BLUETOOTH,
+                CallEndpointCompat.TYPE_WIRED_HEADSET,
+                CallEndpointCompat.TYPE_EARPIECE,
+            )
+        }
+        val target = preference.firstNotNullOfOrNull { type -> available.firstOrNull { it.type == type } }
             ?: return false
         return control.requestEndpointChange(target) is CallControlResult.Success
     }

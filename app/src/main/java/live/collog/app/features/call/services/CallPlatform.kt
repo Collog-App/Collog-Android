@@ -16,7 +16,13 @@ interface CallPlatform {
     val isPushConfigured: Boolean
 
     suspend fun requestMicrophone(): Boolean
+
+    /** 로그인 직후 한 번만 묻는다. 잠금 화면에서 처음 전화를 받을 때 권한 창 때문에 놓치지 않게 한다. */
+    suspend fun requestMicrophoneIfUndetermined(): Boolean
     fun notificationsEnabled(): Boolean
+
+    /** Android 14+에서 전화가 올 때 화면을 켜는 전체 화면 알림이 허용됐는지. */
+    fun fullScreenCallsAllowed(): Boolean
 
     /** 아직 묻지 않았을 때만 알림 권한을 묻는다(iOS `notDetermined`일 때만 묻는 것과 같다). */
     suspend fun requestNotificationsIfUndetermined(): Boolean
@@ -31,8 +37,9 @@ interface CallPlatform {
     fun speakQuestions(questions: List<ApiQuestion>, callId: String, api: CollogApi, onEvent: (String) -> Unit)
     fun stopQuestions()
 
-    fun showIncoming(call: CallCenter.ActiveCall)
+    /** [expiresAt]이 있으면 그때 수신 알림이 저절로 사라진다. */
+    fun showIncoming(call: CallCenter.ActiveCall, expiresAt: java.time.Instant?)
     fun cancelIncoming()
-    fun startOngoing(call: CallCenter.ActiveCall)
+    fun startOngoing(peerName: String)
     fun stopOngoing()
 }

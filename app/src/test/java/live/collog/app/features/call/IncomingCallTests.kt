@@ -183,4 +183,39 @@ class IncomingCallTests {
         assertEquals("통화하려면 휴대폰 설정에서 마이크를 허용해주세요", center.callError)
         fixture.awaitPath("/v1/calls/call-1/decline")
     }
+
+    @Test
+    fun accountChangeWhilePreparingAnOutgoingCallTakesItOffTheSystem() {
+        val uuid = UUID.randomUUID()
+        center.pendingOutgoing = CallCenter.PendingOutgoing(uuid, "child", "자녀")
+        center.systemCalls += uuid
+        center.callOwnerId = "someone-else"
+        center.sessionDidChange()
+        assertNull(center.pendingOutgoing)
+        assertEquals(listOf(uuid to EndCause.Local), platform.callSystem.disconnected)
+    }
+
+    @Test
+    fun staleNotificationDeclinesOnTheServer() = runTest {
+        fixture.respond = { 204 to "" }
+        center.declineStaleCall("old-call")
+        fixture.awaitPath("/v1/calls/old-call/decline")
+        assertTrue(platform.incomingCancelled > 0)
+    }
+
+    @Test
+    fun answeringAfterTheSystemAlreadyAnsweredStillAcceptsOnTheServer() = runTest {
+        fixture.respond = { request ->
+            when {
+                request.url.encodedPath.endsWith("/accept") -> 409 to """{"code":"ALREADY","message":"fixture"}"""
+                else -> 200 to """{"state":"RINGING","endedAt":null,"recordingEnabled":true}"""
+            }
+        }
+        center.handleIncomingPush(push())
+        val uuid = center.activeCall!!.uuid
+        platform.callSystem.answers = false
+        center.systemAnswered += uuid
+        center.answerIncomingCall()
+        fixture.awaitPath("/v1/calls/call-1/accept")
+    }
 }

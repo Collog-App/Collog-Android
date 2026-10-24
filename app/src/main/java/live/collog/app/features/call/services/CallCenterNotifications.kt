@@ -81,9 +81,9 @@ fun CallCenter.updateNotificationAuthorization() {
             }
             reportNotificationsAuthorized = authorized
             notificationPermissionError = when {
-                authorized -> null
-                settings.callNotificationsEnabled -> "휴대폰 설정에서 콜록 알림을 허용해야 전화를 받을 수 있어요"
-                settings.reportNotificationsEnabled -> "휴대폰 설정에서 콜록 알림을 허용해주세요"
+                settings.reportNotificationsEnabled && !authorized -> "휴대폰 설정에서 콜록 알림을 허용해주세요"
+                settings.callNotificationsEnabled && !platform.fullScreenCallsAllowed() ->
+                    "전화가 왔을 때 화면이 켜지도록 휴대폰 설정에서 전체 화면 알림을 허용해주세요"
                 else -> null
             }
             registerDeviceIfPossible()
@@ -128,6 +128,8 @@ fun CallCenter.handleIncomingPush(data: Map<String, String>) {
         questions = questions,
     )
     activeCall = call
+    // 벨은 Telecom 등록을 기다리지 않고 바로 울린다(core-telecom은 addCall 직후 CallStyle 알림을 권한다).
+    platform.showIncoming(call, expiry)
     scope.launch {
         val added = platform.callSystem.add(
             SystemCall(uuid, callerName, callerId ?: "collog", incoming = true),
@@ -138,7 +140,6 @@ fun CallCenter.handleIncomingPush(data: Map<String, String>) {
             return@launch
         }
         if (added) systemCalls += uuid else log("시스템 통화 등록 실패, 알림으로만 수신해요")
-        platform.showIncoming(call)
         incomingCallReported = true
         log("수신 통화 표시: $callerName")
         monitorCall(callId)
@@ -155,4 +156,13 @@ private fun CallCenter.declineIncomingCall(callId: String) {
             log("수신 거절 실패: ${error.message}")
         }
     }
+}
+
+/**
+ * 로그인 직후 한 번: 통화 알림이 켜져 있으면 마이크 권한을 미리 받는다.
+ * 안드로이드는 잠금 화면에서 처음 전화를 받을 때 권한 창이 뜨지 못하면 받기가 실패하기 때문이다(iOS에는 없는 단계).
+ */
+fun CallCenter.prepareCallPermissions() {
+    if (!environment.session.isAuthenticated || !environment.settings.callNotificationsEnabled) return
+    scope.launch { platform.requestMicrophoneIfUndetermined() }
 }

@@ -51,6 +51,7 @@ import live.collog.app.features.auth.views.OnboardingScreen
 import live.collog.app.features.call.models.CallPhase
 import live.collog.app.features.call.services.CallCenter
 import live.collog.app.features.call.services.LocalCallCenter
+import live.collog.app.features.call.services.prepareCallPermissions
 import live.collog.app.features.call.services.registerDeviceIfPossible
 import live.collog.app.features.call.services.resumePendingUploads
 import live.collog.app.features.call.services.toggleMute
@@ -58,6 +59,8 @@ import live.collog.app.features.call.services.toggleSpeaker
 import live.collog.app.features.call.services.updateNotificationAuthorization
 import live.collog.app.features.call.services.updateQuestionVoicePreference
 import live.collog.app.features.call.viewmodels.CallLauncherModel
+import live.collog.app.features.call.views.ActiveCallScreen
+import live.collog.app.features.call.views.CallErrorAlert
 import live.collog.app.features.call.views.CallLauncherOverlay
 import live.collog.app.features.call.views.CallScreen
 import live.collog.app.features.home.models.FamilyContact
@@ -175,7 +178,10 @@ fun RootScreen() {
                     }
                     AuthFlowViewModel.Step.Login -> LoginScreen {
                         callCenter.registerDeviceIfPossible()
-                        if (environment.session.isAuthenticated) callCenter.updateNotificationAuthorization()
+                        if (environment.session.isAuthenticated) {
+                            callCenter.updateNotificationAuthorization()
+                            callCenter.prepareCallPermissions()
+                        }
                         resolve()
                     }
                     AuthFlowViewModel.Step.Consent -> ConsentScreen(onAgreed = { resolve() })
@@ -310,59 +316,4 @@ private fun MainTabs(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
         )
     }
-}
-
-@Composable
-private fun ActiveCallScreen(callCenter: CallCenter, call: CallCenter.ActiveCall) {
-    key(call.id) {
-        CallScreen(
-            peerName = call.peerName,
-            phase = call.phase,
-            questions = call.questions,
-            notice = callCenter.incomingAnswerError ?: call.notice,
-            isIncoming = call.direction == CallCenter.Direction.Incoming && call.phase == CallPhase.Ringing,
-            isAnswering = callCenter.incomingAnswerRequested,
-            canAnswer = callCenter.canAnswerIncomingCall,
-            onAnswer = { callCenter.answerIncomingCall() },
-            recordingEnabled = call.recordingEnabled,
-            isMuted = call.isMuted,
-            isSpeakerEnabled = call.isSpeakerEnabled,
-            onMute = { callCenter.toggleMute() },
-            onSpeaker = { callCenter.toggleSpeaker() },
-            onEnd = { callCenter.endActiveCall() },
-        )
-    }
-}
-
-/** iOS `.alert("통화를 진행할 수 없어요")`. 마이크가 거부됐으면 앱 설정으로 보낸다. */
-@Composable
-private fun CallErrorAlert(callCenter: CallCenter) {
-    val message = callCenter.callError ?: return
-    val context = LocalContext.current
-    AlertDialog(
-        onDismissRequest = { callCenter.callError = null },
-        title = { Text("통화를 진행할 수 없어요", style = CollogType.body01Semibold, color = CollogColors.gray900) },
-        text = { Text(message, style = CollogType.body02Regular, color = CollogColors.gray800) },
-        confirmButton = {
-            TextButton(onClick = { callCenter.callError = null }) {
-                Text("확인", style = CollogType.body02Semibold, color = CollogColors.blue600)
-            }
-        },
-        dismissButton = if (callCenter.needsMicrophoneSettings) {
-            {
-                TextButton(onClick = {
-                    callCenter.callError = null
-                    context.startActivity(
-                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                }) {
-                    Text("설정으로 이동", style = CollogType.body02Semibold, color = CollogColors.blue600)
-                }
-            }
-        } else {
-            null
-        },
-        containerColor = CollogColors.gray00,
-    )
 }

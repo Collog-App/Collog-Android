@@ -27,7 +27,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
-        handleCallIntent(intent)
+        if (savedInstanceState == null) handleReportIntent(intent)
         setContent {
             CompositionLocalProvider(
                 LocalAppEnvironment provides app.environment,
@@ -40,41 +40,32 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleCallIntent(intent)
+        handleReportIntent(intent)
     }
 
     override fun onStart() {
         super.onStart()
-        app.permissions.attach { permissionLauncher.launch(it) }
+        app.permissions.attach(this) { permissionLauncher.launch(it) }
     }
 
     override fun onStop() {
-        app.permissions.detach()
+        app.permissions.detach(this)
         super.onStop()
     }
 
-    /** 알림에서 들어온 동작. 수신 화면은 잠금 화면 위에도 띄운다(iOS CallKit 수신 화면 대응). */
-    private fun handleCallIntent(intent: Intent?) {
-        when (intent?.action) {
-            CallNotifications.ACTION_ANSWER -> {
-                showOverLockScreen()
-                app.callCenter.answerIncomingCall()
-            }
-            CallNotifications.ACTION_SHOW_CALL -> showOverLockScreen()
-            CallNotifications.ACTION_OPEN_REPORT -> {
-                val callId = intent.getStringExtra(CallNotifications.EXTRA_CALL_ID) ?: return
-                app.environment.receiveReportNotification(
-                    callId = callId,
-                    title = intent.getStringExtra(CallNotifications.EXTRA_TITLE).orEmpty(),
-                    message = intent.getStringExtra(CallNotifications.EXTRA_MESSAGE).orEmpty(),
-                    openReport = true,
-                )
-            }
-        }
-    }
-
-    private fun showOverLockScreen() {
-        setShowWhenLocked(true)
-        setTurnScreenOn(true)
+    /**
+     * 리포트 알림을 누르면 리포트 탭을 연다. 이 Activity는 런처라 외부 앱도 열 수 있으므로
+     * 인텐트의 제목·본문은 믿지 않고 서버가 보내는 고정 문구를 쓴다.
+     */
+    private fun handleReportIntent(intent: Intent?) {
+        if (intent?.action != CallNotifications.ACTION_OPEN_REPORT) return
+        val callId = intent.getStringExtra(CallNotifications.EXTRA_CALL_ID) ?: return
+        app.environment.receiveReportNotification(
+            callId = callId,
+            title = "Collog",
+            message = "새 통화 기록을 확인해 주세요.",
+            openReport = true,
+        )
+        setIntent(Intent(intent).setAction(null))
     }
 }

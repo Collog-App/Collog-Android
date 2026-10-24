@@ -1,6 +1,7 @@
 package live.collog.app.features.call.services
 
 import android.Manifest
+import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -43,6 +44,17 @@ class AndroidCallPlatform(
     }
 
     override suspend fun requestMicrophone(): Boolean = permissions.request(listOf(Manifest.permission.RECORD_AUDIO))
+
+    override suspend fun requestMicrophoneIfUndetermined(): Boolean {
+        if (permissions.isGranted(Manifest.permission.RECORD_AUDIO)) return true
+        if (prefs.getBoolean(KEY_MICROPHONE_ASKED, false) || !permissions.canAsk) return false
+        prefs.edit().putBoolean(KEY_MICROPHONE_ASKED, true).apply()
+        return requestMicrophone()
+    }
+
+    override fun fullScreenCallsAllowed(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
+            context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
 
     override fun notificationsEnabled(): Boolean = NotificationManagerCompat.from(context).areNotificationsEnabled()
 
@@ -96,16 +108,16 @@ class AndroidCallPlatform(
         speaker.stop()
     }
 
-    override fun showIncoming(call: CallCenter.ActiveCall) {
-        CallNotifications.showIncoming(context, call)
+    override fun showIncoming(call: CallCenter.ActiveCall, expiresAt: java.time.Instant?) {
+        CallNotifications.showIncoming(context, call, expiresAt)
     }
 
     override fun cancelIncoming() {
         CallNotifications.cancelIncoming(context)
     }
 
-    override fun startOngoing(call: CallCenter.ActiveCall) {
-        CallService.start(context, call.peerName)
+    override fun startOngoing(peerName: String) {
+        CallService.start(context, peerName)
     }
 
     override fun stopOngoing() {
@@ -114,5 +126,6 @@ class AndroidCallPlatform(
 
     private companion object {
         const val KEY_NOTIFICATIONS_ASKED = "notificationsAsked"
+        const val KEY_MICROPHONE_ASKED = "microphoneAsked"
     }
 }

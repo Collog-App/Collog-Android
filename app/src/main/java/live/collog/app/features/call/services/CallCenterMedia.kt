@@ -179,11 +179,13 @@ private fun CallCenter.handleRoomEvent(room: Room, event: RoomEvent) {
             scope.launch { restoreAfterReconnect(room) }
         }
         is RoomEvent.Disconnected -> {
-            val call = activeCall
-            when {
-                event.reason == DisconnectReason.ROOM_DELETED -> call?.let { handleMediaError(RoomDeletedException(), it.uuid) }
-                event.error != null && call != null -> handleMediaError(event.error!!, call.uuid)
-                else -> finishRemoteCall(if (event.error == null) EndCause.Remote else EndCause.Local)
+            val call = activeCall ?: return
+            // LiveKit Android는 오류 객체를 넘기지 않으므로(항상 null) 사유로 나눈다.
+            // iOS처럼 방 삭제는 상대 종료로, 그 밖의 끊김은 오류로 끝내고 서버에 알린다.
+            when (event.reason) {
+                DisconnectReason.ROOM_DELETED -> handleMediaError(RoomDeletedException(), call.uuid)
+                DisconnectReason.CLIENT_INITIATED -> finishRemoteCall(EndCause.Local)
+                else -> failCall(call.uuid, "통화 연결이 끊어졌어요. 인터넷 상태를 확인한 뒤 다시 걸어주세요.")
             }
         }
         is RoomEvent.ParticipantConnected -> {
