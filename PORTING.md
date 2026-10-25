@@ -1,6 +1,6 @@
 # iOS → Android 포팅 규칙
 
-정본은 iOS 앱이다: `/Users/aqtg6/codex_project/collog/Collog-iOS/collog-ios` (Collog-iOS `main` f738313).
+정본은 iOS 앱이다: [Collog-iOS](https://github.com/Collog-App/Collog-iOS)의 `collog-ios/` (`main` f738313).
 동작과 화면을 그대로 옮긴다. 다시 설계하지 않는다. 문구·색·간격·순서·조건 분기를 iOS와 같게 둔다.
 
 ## 이미 있는 기반 (고치지 말고 가져다 쓴다)
