@@ -175,6 +175,8 @@ class HomeSummaryTests {
         assertEquals("+2.2%", signedPercent1(2.25))
         assertEquals("-3.4%", signedPercent1(-3.35))
         assertEquals("+12.0%", signedPercent1(12.0))
+        assertEquals("-0.0%", signedPercent1(-0.03))
+        assertEquals("+0.0%", signedPercent1(0.0))
         assertEquals("3.4", fixed1(3.35))
     }
 

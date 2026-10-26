@@ -142,6 +142,10 @@ fun ReportTimelineScreen(initialTabIndex: Int = 1) {
     }
 
     LaunchedEffect(Unit) { viewModel.refresh(environment) }
+    // 가족 목록보다 먼저 그려지면(꺼진 앱에서 리포트 알림을 눌러 바로 이 탭이 열림) 고를 가족이 없어 빈 화면에 머문다.
+    // 목록이 오면 다시 고르고 불러온다.
+    // 화면 범위에서 돌린다: 목록이 연달아 바뀌어 진행 중인 refresh가 취소되면 그 주가 로딩 중에 멈출 수 있다.
+    OnChange(contacts) { _, _ -> scope.launch { viewModel.refresh(environment) } }
     OnChange(tabManager.reselectionCount) { _, _ ->
         if (tabManager.reselectedTab == tab) moveToCurrentWeek()
     }
@@ -311,7 +315,8 @@ fun ReportTimelineScreen(initialTabIndex: Int = 1) {
         // iOS LazyVStack의 `.task`: 화면 가까이 온 주만 불러온다
         var isNear by remember { mutableStateOf(offset == 0) }
 
-        LaunchedEffect(isNear, page.isLoaded) {
+        // 불러오는 중에 가족을 바꾸면 isLoaded가 false 그대로라, 가족도 키로 둬야 새 가족 것을 다시 부른다
+        LaunchedEffect(isNear, page.isLoaded, viewModel.selectedContactId) {
             if (isNear && !page.isLoaded) viewModel.loadPage(offset, environment)
         }
 

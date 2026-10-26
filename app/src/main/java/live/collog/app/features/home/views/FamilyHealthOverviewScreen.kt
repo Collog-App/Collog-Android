@@ -40,8 +40,11 @@ import live.collog.app.shared.ui.designsystem.cardSurface
 internal fun fixed1(value: Double): String =
     BigDecimal(value).setScale(1, RoundingMode.HALF_EVEN).toPlainString()
 
-/** Swift `String(format: "%+.1f%%")`. */
-internal fun signedPercent1(value: Double): String = (if (value < 0) "" else "+") + fixed1(value) + "%"
+/** Swift `String(format: "%+.1f%%")`: 음수가 0.0으로 반올림돼도 `-0.0%`. */
+internal fun signedPercent1(value: Double): String {
+    val negative = value < 0 || (value == 0.0 && 1 / value < 0)
+    return (if (negative) "-" else "+") + fixed1(Math.abs(value)) + "%"
+}
 
 /** 첫 기록 대비 최근 기록의 변화율(%). 첫 값이 0이거나 점이 없으면 null. */
 internal fun changeRate(trend: TrendSeries?): Double? {

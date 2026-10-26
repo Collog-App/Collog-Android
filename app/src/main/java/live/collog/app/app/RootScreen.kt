@@ -161,7 +161,11 @@ fun RootScreen() {
             callCenter.updateNotificationAuthorization()
         }
     }
-    OnChange(environment.reportNotificationRevision) { _, _ ->
+    // OnChange는 첫 그림의 값을 건너뛰어, 꺼진 앱에서 알림을 눌러 그리기 전에 오른 번호를 놓친다.
+    LaunchedEffect(environment.reportNotificationRevision) {
+        val revision = environment.reportNotificationRevision
+        if (revision == environment.openedReportNotificationRevision) return@LaunchedEffect
+        environment.openedReportNotificationRevision = revision
         navigation.popToRoot(MainTab.Report)
         tabManager.selectedTab = MainTab.Report
     }

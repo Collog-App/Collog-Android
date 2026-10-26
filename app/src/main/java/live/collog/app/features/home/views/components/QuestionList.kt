@@ -83,7 +83,16 @@ private fun FloatingQuestions(questions: List<PreviewQuestion>) {
     var frameNanos by remember { mutableLongStateOf(0L) }
     LaunchedEffect(reduceMotion) {
         if (reduceMotion) return@LaunchedEffect
-        while (true) withFrameNanos { frameNanos = it }
+        // iOS `TimelineView(.animation(minimumInterval: 1 / 30))`처럼 초당 30번까지만 다시 그린다
+        var last = 0L
+        while (true) {
+            withFrameNanos {
+                if (it - last >= 33_000_000L) {
+                    frameNanos = it
+                    last = it
+                }
+            }
+        }
     }
 
     Box(Modifier.fillMaxWidth().height(144.dp), contentAlignment = Alignment.Center) {
