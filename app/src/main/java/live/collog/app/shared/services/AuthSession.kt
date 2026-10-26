@@ -52,12 +52,15 @@ class AuthSession(
         }
     }
 
-    fun apply(response: TokenResponse) {
+    fun apply(response: TokenResponse) = store(response, cancelRefresh = true)
+
+    /** refresh 안에서 부를 때는 [cancelRefresh]가 false다. 돌고 있는 자기 자신을 취소하면 새 토큰을 받고도 요청이 취소로 끝난다. */
+    private fun store(response: TokenResponse, cancelRefresh: Boolean) {
         credentialStore.write(response)
         storageError = null
         if (user?.id != response.user.id || user?.role != response.user.role) {
             generation = UUID.randomUUID()
-            refreshTask?.cancel()
+            if (cancelRefresh) refreshTask?.cancel()
             refreshTask = null
             onAccountChanged?.invoke()
         }
@@ -111,7 +114,7 @@ class AuthSession(
                 if (user?.id == refreshedUser.id && user?.role == refreshedUser.role) {
                     refreshedUser = refreshedUser.copy(familyId = user?.familyId ?: refreshedUser.familyId)
                 }
-                apply(TokenResponse(response.accessToken, response.refreshToken, refreshedUser))
+                store(TokenResponse(response.accessToken, response.refreshToken, refreshedUser), cancelRefresh = false)
                 response.accessToken
             } catch (error: ApiError.Unauthenticated) {
                 if (currentGeneration == generation) signOut()
@@ -119,10 +122,9 @@ class AuthSession(
             }
         }
         refreshTask = task
-        try {
-            return task.await()
-        } finally {
-            if (currentGeneration == generation) refreshTask = null
-        }
+        // 기다리던 쪽이 취소돼도 갱신은 끝까지 돌고, 끝날 때 비운다(iOS `Task.value`처럼).
+        // 기다리던 쪽에서 비우면 다음 401이 옛 refresh 토큰으로 갱신을 또 시작해 로그아웃된다.
+        task.invokeOnCompletion { if (refreshTask === task) refreshTask = null }
+        return task.await()
     }
 }

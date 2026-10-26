@@ -1,5 +1,7 @@
 package live.collog.app.features.settings.models
 
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import live.collog.app.config.AppEnvironment
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.shared.models.HealthCondition
@@ -79,7 +81,8 @@ internal suspend fun deleteAccountAndSignOut(environment: AppEnvironment) {
     if (environment.session.user?.id == userId) {
         environment.session.signOut()
         environment.settings.isGuestMode = false
-        environment.afterSignOut?.invoke()
+        // 로그아웃으로 이 화면이 사라져도 Google 정리는 끝까지 한다
+        withContext(NonCancellable) { environment.afterSignOut?.invoke() }
     }
 }
 

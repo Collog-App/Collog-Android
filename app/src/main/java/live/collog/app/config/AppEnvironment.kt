@@ -6,6 +6,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import live.collog.app.shared.models.UserRoleOption
 import live.collog.app.shared.services.AuthSession
 import live.collog.app.shared.services.FamilyStore
@@ -39,7 +42,13 @@ class AppEnvironment(
         val user = session.user ?: return null
         if (user.role == UserRoleOption.Parent.rawValue) return user.id
         val familyId = user.familyId ?: return null
-        val members = runCatching { api.members(familyId) }.getOrNull()
+        val members = try {
+            api.members(familyId)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            null
+        }
         return members?.firstOrNull { it.userId != null && it.role != "CHILD" && it.userId != user.id }?.userId
     }
 
@@ -58,8 +67,12 @@ class AppEnvironment(
         val refreshToken = session.refreshToken
         val api = api
         session.signOut()
-        if (refreshToken != null) runCatching { api.logout(refreshToken) }
-        afterSignOut?.invoke()
+        // 로그아웃하면 부른 화면이 사라져 그 범위가 취소된다. 서버 로그아웃과 Google 정리는 끝까지 한다
+        // (iOS는 화면과 상관없는 Task에서 돈다).
+        withContext(NonCancellable) {
+            if (refreshToken != null) runCatching { api.logout(refreshToken) }
+            afterSignOut?.invoke()
+        }
     }
 
     fun receiveReportNotification(callId: String, title: String, message: String, openReport: Boolean) {

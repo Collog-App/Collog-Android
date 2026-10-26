@@ -4,7 +4,9 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import java.security.GeneralSecurityException
 import java.security.KeyStore
+import java.security.ProviderException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -40,15 +42,29 @@ class CredentialStore(context: Context) : SessionCredentialStorage {
 
     override fun write(response: TokenResponse) {
         try {
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.ENCRYPT_MODE, key())
-            val ciphertext = cipher.doFinal(CollogJson.encodeToString(response).toByteArray(Charsets.UTF_8))
-            val value = Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + ":" +
-                Base64.encodeToString(ciphertext, Base64.NO_WRAP)
-            if (!prefs.edit().putString(VALUE_KEY, value).commit()) error("commit failed")
+            encryptAndSave(response)
         } catch (error: Exception) {
-            throw ApiError.Transport("로그인 정보를 안전하게 저장하지 못했어요")
+            // 기기에 따라 OS 업데이트 뒤 Keystore 키가 망가진다. 그대로 두면 다시 설치할 때까지 로그인할 수 없으니
+            // 키 문제일 때만 키를 새로 만들어 한 번 더 저장한다(저장 공간 문제로 지우면 멀쩡한 세션까지 잃는다).
+            if (error !is GeneralSecurityException && error !is ProviderException) {
+                throw ApiError.Transport("로그인 정보를 안전하게 저장하지 못했어요")
+            }
+            try {
+                KeyStore.getInstance(KEYSTORE).apply { load(null) }.deleteEntry(KEY_ALIAS)
+                encryptAndSave(response)
+            } catch (retryError: Exception) {
+                throw ApiError.Transport("로그인 정보를 안전하게 저장하지 못했어요")
+            }
         }
+    }
+
+    private fun encryptAndSave(response: TokenResponse) {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, key())
+        val ciphertext = cipher.doFinal(CollogJson.encodeToString(response).toByteArray(Charsets.UTF_8))
+        val value = Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + ":" +
+            Base64.encodeToString(ciphertext, Base64.NO_WRAP)
+        if (!prefs.edit().putString(VALUE_KEY, value).commit()) error("commit failed")
     }
 
     override fun delete() {
