@@ -140,9 +140,16 @@ fun CallCenter.handleIncomingPush(data: Map<String, String>) {
             return@launch
         }
         if (added) systemCalls += uuid else log("시스템 통화 등록 실패, 알림으로만 수신해요")
+        // 알림 권한이 없으면 처음 올린 알림은 버려진다. 자체 관리 통화의 CallStyle 예외는 Telecom에 통화가
+        // 있어야 적용되므로, 등록을 마친 지금 다시 올린다(그대로 두면 화면도 벨도 없이 놓친다).
+        if (added && !platform.notificationsEnabled()) platform.showIncoming(call, expiry)
         incomingCallReported = true
-        log("수신 통화 표시: $callerName")
+        log("수신 통화 표시")
         monitorCall(callId)
+        if (answerWhenReported) {
+            answerWhenReported = false
+            answerIncomingCall()
+        }
     }
 }
 

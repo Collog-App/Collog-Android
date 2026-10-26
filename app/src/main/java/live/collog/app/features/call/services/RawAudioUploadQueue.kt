@@ -75,14 +75,14 @@ class RawAudioUploadQueue(
             sampleRate = sampleRate,
         )
         val destination = audioFile(job)
-        file.copyTo(destination)
+        // 같은 저장소 안이라 복사 대신 옮긴다(긴 통화의 큰 파일을 메인 스레드에서 복사하지 않게).
+        Files.move(file.toPath(), destination.toPath())
         try {
             save(job)
         } catch (error: Exception) {
             destination.delete()
             throw error
         }
-        Files.delete(file.toPath())
     }
 
     suspend fun resume() {

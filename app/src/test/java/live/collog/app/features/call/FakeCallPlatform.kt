@@ -4,6 +4,7 @@ import io.livekit.android.room.Room
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import live.collog.app.features.call.services.CallCenter
 import live.collog.app.features.call.services.CallPlatform
 import live.collog.app.features.call.services.CallSystem
@@ -20,8 +21,11 @@ class FakeCallSystem : CallSystem {
     val events = mutableMapOf<UUID, SystemCallEvents>()
     var accepts = true
     var answers = true
+    /** 주면 Telecom 등록이 이것이 끝날 때까지 걸린다. */
+    var addGate: CompletableDeferred<Unit>? = null
 
     override suspend fun add(call: SystemCall, events: SystemCallEvents): Boolean {
+        addGate?.await()
         if (!accepts) return false
         added += call
         this.events[call.id] = events
@@ -44,6 +48,7 @@ class FakeCallPlatform : CallPlatform {
     override val isPushConfigured = false
 
     var microphoneGranted = true
+    var notificationsAllowed = true
     val shownIncoming = mutableListOf<String>()
     var incomingCancelled = 0
     var ongoing = mutableListOf<String>()
@@ -51,7 +56,7 @@ class FakeCallPlatform : CallPlatform {
 
     override suspend fun requestMicrophone(): Boolean = microphoneGranted
     override suspend fun requestMicrophoneIfUndetermined(): Boolean = microphoneGranted
-    override fun notificationsEnabled(): Boolean = true
+    override fun notificationsEnabled(): Boolean = notificationsAllowed
     override fun fullScreenCallsAllowed(): Boolean = true
     override suspend fun requestNotificationsIfUndetermined(): Boolean = true
     override suspend fun fetchPushToken(): String? = null

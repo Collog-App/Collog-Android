@@ -23,6 +23,7 @@ import live.collog.app.features.call.models.CallSafety
 import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.ApiQuestion
 import live.collog.app.shared.services.api.CallAccepted
+import live.collog.app.shared.services.api.CollogApi
 
 /**
  * iOS `CallCenter`(+Lifecycle, +CallKit). 발신·수신·끊기와 통화 상태 확인을 맡는다.
@@ -84,6 +85,10 @@ class CallCenter(
     internal val systemAnswered = mutableSetOf<UUID>()
     internal val answeredCallIds = mutableSetOf<String>()
     internal val answeringCallIds = mutableSetOf<String>()
+    /** 받기를 서버에 보낸 통화와 그 요청 ID. 응답을 잃었을 때 이 기기가 받은 것인지 가리는 데 쓴다. */
+    internal val acceptRequestIds = mutableMapOf<String, String>()
+    /** 알림의 받기를 시스템 통화 등록이 끝나기 전에 눌렀다. 등록이 끝나면 받는다. */
+    internal var answerWhenReported = false
     internal var serverAccepted = false
     internal var callOwnerId: String? = null
     internal var microphoneJob: Job? = null
@@ -149,6 +154,7 @@ class CallCenter(
     suspend fun prepareSignOut() {
         val call = activeCall
         val acceptedHere = call?.let { it.id in answeredCallIds } ?: false
+        val acceptRequestId = call?.let { acceptRequestIds[it.id] }
         val api = environment.api
         if (call != null) reportEnded(call.uuid, EndCause.Remote)
         discardAnalysisRecording()
@@ -156,7 +162,11 @@ class CallCenter(
         teardown()
         call ?: return
         try {
-            if (call.direction == Direction.Incoming && !acceptedHere) api.declineCall(call.id) else api.endCall(call.id)
+            if (call.direction == Direction.Incoming && !acceptedHere) {
+                declineUnanswered(api, call.id, acceptRequestId)
+            } else {
+                api.endCall(call.id)
+            }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -241,6 +251,11 @@ class CallCenter(
     }
 
     fun answerIncomingCall() {
+        val ringing = activeCall?.takeIf { it.direction == Direction.Incoming && it.phase == CallPhase.Ringing }
+        if (ringing != null && !incomingCallReported) {
+            answerWhenReported = true
+            return
+        }
         if (!canAnswerIncomingCall) return
         val call = activeCall ?: return
         incomingAnswerRequested = true
@@ -277,6 +292,7 @@ class CallCenter(
             updateCall { it.copy(phase = CallPhase.Connecting) }
             platform.startOngoing(call.peerName)
             activateAudio()
+            acceptRequestIds[call.id] = requestId
             val accepted = acceptCallWithRetry(call.id, requestId)
             if (activeCall?.id != call.id) {
                 endQuietly(call.id)
@@ -363,11 +379,27 @@ class CallCenter(
         }
     }
 
+    /**
+     * 받기 전의 수신을 서버에 거절로 알린다. 이 기기가 받기를 보냈는데 응답만 잃었으면 서버에서는 이미 받아져
+     * 거절이 409다. 같은 요청 ID로 받기를 다시 보내 이 기기가 받은 것이 맞을 때만 끝낸다
+     * (같은 사람의 다른 기기가 받은 통화는 끊지 않는다. 서버 받기는 같은 요청 ID에만 다시 200을 준다).
+     */
+    private suspend fun declineUnanswered(api: CollogApi, callId: String, acceptRequestId: String?) {
+        try {
+            api.declineCall(callId)
+        } catch (error: ApiError.Server) {
+            if (error.status != 409 || acceptRequestId == null) throw error
+            api.acceptCall(callId, acceptRequestId)
+            api.endCall(callId)
+        }
+    }
+
     /** iOS `CXEndCallAction` 처리. 받기 전의 수신은 거절로, 그 밖은 종료로 서버에 알린다. */
     internal suspend fun performEnd(uuid: UUID, fromSystem: Boolean) {
         if (activeCall?.uuid != uuid && pendingOutgoing?.uuid != uuid) return
         val call = activeCall
         val answered = call?.let { it.direction == Direction.Outgoing || it.id in answeredCallIds } ?: false
+        val acceptRequestId = call?.let { acceptRequestIds[it.id] }
         if (!fromSystem) {
             reportEnded(uuid, if (call?.direction == Direction.Incoming && !answered) EndCause.Rejected else EndCause.Local)
         } else {
@@ -377,7 +409,7 @@ class CallCenter(
         call ?: return
         answeredCallIds -= call.id
         try {
-            if (answered) environment.api.endCall(call.id) else environment.api.declineCall(call.id)
+            if (answered) environment.api.endCall(call.id) else declineUnanswered(environment.api, call.id, acceptRequestId)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -425,6 +457,7 @@ class CallCenter(
         if (callId != null) {
             answeredCallIds -= callId
             answeringCallIds -= callId
+            acceptRequestIds -= callId
             finishAnalysisRecording(callId)
         } else {
             analysisTrack = null
@@ -450,6 +483,7 @@ class CallCenter(
         pendingOutgoing = null
         activeCall = null
         incomingCallReported = false
+        answerWhenReported = false
         incomingAnswerRequested = false
         incomingAnswerError = null
         val previousRoom = room
@@ -463,6 +497,7 @@ class CallCenter(
         if (activeCall?.uuid != uuid && pendingOutgoing?.uuid != uuid) return
         val call = activeCall
         val acceptedHere = call?.let { it.id in answeredCallIds } ?: false
+        val acceptRequestId = call?.let { acceptRequestIds[it.id] }
         callError = message
         needsMicrophoneSettings = microphone
         reportEnded(uuid, EndCause.Local)
@@ -471,7 +506,7 @@ class CallCenter(
         scope.launch {
             try {
                 if (call.direction == Direction.Incoming && !acceptedHere) {
-                    environment.api.declineCall(call.id)
+                    declineUnanswered(environment.api, call.id, acceptRequestId)
                 } else {
                     environment.api.endCall(call.id)
                 }
