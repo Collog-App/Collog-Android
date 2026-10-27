@@ -10,7 +10,9 @@ import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
@@ -108,10 +110,18 @@ class CollogApiClient(
         } catch (error: IOException) {
             throw transportError(error)
         }
-        return response.use {
-            val data = it.body.string()
-            validate(it.code, data)
-            data
+        // 본문은 IO 스레드에서 읽는다. 응답이 커서 다 받지 못한 채 메인에서 읽으면 NetworkOnMainThreadException
+        // (메시지 없음)이 나고, 화면은 오류 대신 빈 목록을 보여 준다.
+        return withContext(Dispatchers.IO) {
+            response.use {
+                val data = try {
+                    it.body.string()
+                } catch (error: IOException) {
+                    throw transportError(error)
+                }
+                validate(it.code, data)
+                data
+            }
         }
     }
 
