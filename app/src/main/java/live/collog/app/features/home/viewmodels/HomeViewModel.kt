@@ -78,16 +78,8 @@ class HomeViewModel {
         }
 
         if (!environment.session.isAuthenticated) return
-        val user = environment.session.user
-        val parentId = (
-            if (user?.role == "PARENT") {
-                user.id
-            } else if (contact?.userId != null) {
-                contact.userId
-            } else {
-                environment.subjectParentId()
-            }
-            ) ?: return
+        // 리포트 대상은 고른 가족이다(나의 리포트는 두 사람 분석(S3) 뒤에 붙는다)
+        val parentId = contact?.userId ?: return
 
         val api = environment.api
         val calls: List<CallSummaryDto> = try {
@@ -128,24 +120,20 @@ class HomeViewModel {
         if (this.generation != generation) return
         healthSummary = FamilyHealthSummary.fromDto(
             dto,
-            memberName = if (user?.role == "PARENT") user.name ?: "나" else contact?.name ?: "가족",
+            memberName = contact.name,
             baseline = speechRateBaseline,
         )
         healthFeedback = HealthFeedback.fromDto(dto)
     }
 
-    /**
-     * 가족마다 마지막 통화 시각. 부모는 자기 통화 기록을 모든 가족에 쓰고,
-     * 자녀는 부모마다 통화 기록을 따로 받는다(이미 받은 [calls]는 다시 받지 않는다). 못 받은 가족은 빠진다.
-     */
+    /** 가족마다 마지막 통화 시각: 가족마다 통화 기록을 따로 받는다(이미 받은 [calls]는 다시 받지 않는다). 못 받은 가족은 빠진다. */
     private suspend fun latestCalls(
         environment: AppEnvironment,
         parentId: String,
         calls: List<CallSummaryDto>,
     ): Map<String, Instant> = coroutineScope {
-        val isParent = environment.session.user?.role == "PARENT"
         environment.family.contacts.mapNotNull { contact ->
-            val contactParentId = (if (isParent) parentId else contact.userId) ?: return@mapNotNull null
+            val contactParentId = contact.userId ?: return@mapNotNull null
             async {
                 val contactCalls = if (contactParentId == parentId) {
                     calls

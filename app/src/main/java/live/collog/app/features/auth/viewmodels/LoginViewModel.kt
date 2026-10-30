@@ -9,14 +9,14 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import live.collog.app.config.AppEnvironment
 import live.collog.app.features.auth.services.GoogleSignIn
-import live.collog.app.shared.models.UserRoleOption
 import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.LoginChallenge
 
-/** iOS `LoginViewModel`의 Google판. 서버 challenge를 미리 받아 두고 만료 10초 전에 새로 받는다. */
+/**
+ * iOS `LoginViewModel`의 Google판. 서버 challenge를 미리 받아 두고 만료 10초 전에 새로 받는다.
+ * 역할과 이름은 묻지 않는다: 이름은 Google 계정 이름을 보내고, 닉네임은 가입 정보 단계에서 정한다.
+ */
 class LoginViewModel {
-    var name by mutableStateOf("")
-    var role by mutableStateOf(UserRoleOption.Child)
     var isSubmitting by mutableStateOf(false)
         private set
     var isLoadingChallenge by mutableStateOf(false)
@@ -72,18 +72,12 @@ class LoginViewModel {
             return false
         }
         isSubmitting = true
-        val requestRole = role.rawValue
         try {
             val google = GoogleSignIn.requestIdToken(activityContext, challenge.nonce)
-            val enteredName = name.trim()
-            val googleName = google.displayName?.trim().orEmpty()
-            val displayName = enteredName.ifEmpty { googleName }
-            if (name.isEmpty()) name = displayName
             val response = environment.api.loginWithGoogle(
                 idToken = google.idToken,
                 challengeId = challenge.challengeId,
-                role = requestRole,
-                name = displayName.ifEmpty { null },
+                name = google.displayName?.trim()?.ifEmpty { null },
             )
             environment.session.apply(response)
             clearRequest()

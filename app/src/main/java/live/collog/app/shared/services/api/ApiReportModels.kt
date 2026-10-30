@@ -21,7 +21,7 @@ object ConsentItemLabel {
         "SENSITIVE_HEALTH_COLLECTION" -> "건강 민감정보 수집·이용"
         "VOICE_FEATURE_EXTRACTION" -> "음성 특징값 추출"
         "CALL_RECORDING" -> "통화 녹음과 분석"
-        "REPORT_SHARING_WITH_CHILD" -> "자녀와 리포트 공유"
+        "REPORT_SHARING_WITH_CHILD" -> "가족과 리포트 공유"
         "THIRD_PARTY_AI_PROCESSING" -> "Deepgram, Google Gemini, ElevenLabs에 데이터 전송"
         else -> code
     }

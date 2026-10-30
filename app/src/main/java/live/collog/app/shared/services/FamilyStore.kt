@@ -62,9 +62,8 @@ class FamilyStore {
         }
         val userId = environment.session.user?.id
         try {
-            val members = environment.api.members(familyId).filter {
-                it.isCallable && it.userId != userId && it.role != environment.session.user?.role
-            }
+            // 역할 구분 없이 나를 뺀 연결된 가족 모두가 연락처다
+            val members = environment.api.members(familyId).filter { it.isCallable && it.userId != userId }
             if (environment.session.user?.id != userId || refreshGeneration != generation) return
             contacts = members.map { FamilyContact(it, lastCallText = it.relationTitle) }
             if (contacts.none { it.id == selectedContactId }) selectedContactId = contacts.firstOrNull()?.id
@@ -78,11 +77,8 @@ class FamilyStore {
         }
 
         val contactId = selectedContactId
-        val parentId = if (environment.session.user?.role == "PARENT") {
-            userId
-        } else {
-            selectedContact?.userId ?: environment.subjectParentId()
-        } ?: return
+        // 오늘의 질문은 고른 가족(통화 상대)의 프로필로 만든다
+        val parentId = selectedContact?.userId ?: return
         try {
             val remote = environment.api.dailyQuestions(parentId)
             if (environment.session.user?.id != userId || refreshGeneration != generation ||

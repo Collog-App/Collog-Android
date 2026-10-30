@@ -57,14 +57,23 @@ class AuthSessionTests {
     }
 
     @Test
-    fun refreshThatChangesTheRoleStillReturnsTheNewToken() {
+    fun roleChangeIsNotAnAccountChange() {
+        // 역할은 호환용 값이라, 같은 계정의 역할이 바뀌어도 가족 목록을 비우지 않고 고른 가족도 그대로 둔다
         val fixture = TestEnvironment(role = "PARENT")
         try {
             runBlocking {
-                fixture.respond = { 200 to tokens("CHILD") }
+                var accountChanges = 0
                 val session = fixture.environment.session
+                val previous = session.onAccountChanged
+                session.onAccountChanged = {
+                    accountChanges += 1
+                    previous?.invoke()
+                }
+                session.joinFamily("chosen-family")
+                fixture.respond = { 200 to tokens("CHILD") }
                 assertEquals("new-token", session.refresh(fixture.environment.settings.resolvedBaseUrl))
-                assertEquals("CHILD", session.user?.role)
+                assertEquals(0, accountChanges)
+                assertEquals("chosen-family", session.familyId)
             }
         } finally {
             fixture.cleanUp()

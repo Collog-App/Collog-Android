@@ -137,9 +137,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
     private class Context(val parentId: String, val api: CollogApi, val baselines: Map<String, BaselineDto>)
 
     private suspend fun loadContext(environment: AppEnvironment): Context? {
-        val contact = selectedContact(environment)
-        val user = environment.session.user
-        val parentId = (if (user?.role == "PARENT") user.id else contact?.userId) ?: return null
+        val parentId = selectedContact(environment)?.userId ?: return null
         val api = environment.api
 
         val baselines = baselineCache[parentId] ?: run {
@@ -172,11 +170,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             contentGeneration += 1
         }
         selectedContactId = contact.id
-        selectedMember = if (environment.session.user?.role == "PARENT") {
-            environment.session.user?.name ?: "나"
-        } else {
-            contact.name
-        }
+        selectedMember = contact.name
         selectedRelation = contact.relation
     }
 

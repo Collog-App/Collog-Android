@@ -4,6 +4,7 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.test.runTest
 import live.collog.app.TestEnvironment
+import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.home.models.FamilyHealthSummary
 import live.collog.app.features.home.models.HealthFeedback
 import live.collog.app.features.home.models.fromDto
@@ -73,16 +74,18 @@ class HomeSummaryTests {
         assertTrue(TrendSeries.from(data, baseline())!!.hasPersonalBaseline)
     }
 
+    private val mom = FamilyContact("m1", "mom", "엄마", "MOTHER", "어머니")
+
     @Test
     fun homeLoadsFirstSummaryAndQuestionsWithoutTrend() = runTest {
         val fixture = TestEnvironment()
         try {
             fixture.respond = { request ->
                 when (request.url.encodedPath) {
-                    "/v1/parents/me/calls" -> 200 to """{"calls":[]}"""
-                    "/v1/parents/me/baseline" -> 200 to """{"baselines":[]}"""
-                    "/v1/parents/me/reports" -> 200 to """
-                        {"parentId":"me","period":"WEEKLY","from":"2026-09-07","to":"2026-09-13",
+                    "/v1/parents/mom/calls" -> 200 to """{"calls":[]}"""
+                    "/v1/parents/mom/baseline" -> 200 to """{"baselines":[]}"""
+                    "/v1/parents/mom/reports" -> 200 to """
+                        {"parentId":"mom","period":"WEEKLY","from":"2026-09-07","to":"2026-09-13",
                         "state":"BASELINE_COLLECTING","disclaimer":"","promotedSignals":[],"acuteSignals":[],
                         "conversationItems":{"activity":["산책했다고 이야기했어요."]},
                         "repeatObservation":{"count":0,"callsWithRepeat":0,"label":""},
@@ -92,7 +95,7 @@ class HomeSummaryTests {
                 }
             }
             val model = HomeViewModel()
-            model.refresh(fixture.environment, contact = null)
+            model.refresh(fixture.environment, contact = mom)
             assertEquals(1, model.healthSummary?.conversationGroups?.size)
             assertEquals(1, model.healthFeedback?.followUps?.size)
             assertNull(model.loadError)
@@ -109,13 +112,13 @@ class HomeSummaryTests {
         try {
             fixture.respond = { request ->
                 when (request.url.encodedPath) {
-                    "/v1/parents/me/calls" -> 200 to """{"calls":[]}"""
-                    "/v1/parents/me/baseline" -> 200 to """{"baselines":[]}"""
+                    "/v1/parents/mom/calls" -> 200 to """{"calls":[]}"""
+                    "/v1/parents/mom/baseline" -> 200 to """{"baselines":[]}"""
                     else -> 500 to """{"code":"SERVER","message":"서버 오류"}"""
                 }
             }
             val model = HomeViewModel()
-            model.refresh(fixture.environment, contact = null)
+            model.refresh(fixture.environment, contact = mom)
             assertNull(model.healthSummary)
             assertEquals("서버 오류", model.loadError)
             assertTrue(model.isLoaded)
@@ -158,15 +161,32 @@ class HomeSummaryTests {
     }
 
     @Test
-    fun childLoadsLatestCallForEachParent() = runTest {
-        val fixture = TestEnvironment(role = "CHILD")
+    fun withoutSelectedContactNothingIsLoaded() = runTest {
+        // 예전 부모 계정이어도 자기 기록을 대상으로 삼지 않는다(나의 리포트는 두 사람 분석 뒤에 붙는다)
+        val fixture = TestEnvironment(role = "PARENT")
+        try {
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = null)
+            assertNull(model.healthSummary)
+            assertNull(model.loadError)
+            assertTrue(model.isLoaded)
+            assertTrue(fixture.paths.isEmpty())
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun loadsLatestCallForEachFamilyMember() = runTest {
+        val fixture = TestEnvironment()
         try {
             fixture.respond = { request ->
                 val path = request.url.encodedPath
                 when {
+                    // 역할이 같은 구성원(CHILD)도 연락처다
                     path.endsWith("/members") -> 200 to """{"members":[
                         {"memberId":"m1","userId":"mom","name":"엄마","relation":"MOTHER","status":"ACTIVE","role":"PARENT"},
-                        {"memberId":"m2","userId":"dad","name":"아빠","relation":"FATHER","status":"ACTIVE","role":"PARENT"}]}"""
+                        {"memberId":"m2","userId":"dad","name":"아빠","relation":"FATHER","status":"ACTIVE","role":"CHILD"}]}"""
                     path.endsWith("/daily-questions") -> 200 to """{"questions":[]}"""
                     path == "/v1/parents/mom/calls" -> 200 to """{"calls":[
                         {"callId":"c1","parentId":"mom","state":"ANALYZED","startedAt":"2026-10-01T03:00:00Z","recorded":true},
@@ -189,7 +209,7 @@ class HomeSummaryTests {
     }
 
     @Test
-    fun parentUsesOwnCallsForEveryContact() = runTest {
+    fun legacyParentAccountLoadsEachContactLikeEveryoneElse() = runTest {
         val fixture = TestEnvironment(role = "PARENT")
         try {
             fixture.respond = { request ->
@@ -199,8 +219,10 @@ class HomeSummaryTests {
                         {"memberId":"k1","userId":"son","name":"아들","relation":"SON","status":"ACTIVE","role":"CHILD"},
                         {"memberId":"k2","userId":"daughter","name":"딸","relation":"DAUGHTER","status":"ACTIVE","role":"CHILD"}]}"""
                     path.endsWith("/daily-questions") -> 200 to """{"questions":[]}"""
-                    path == "/v1/parents/me/calls" -> 200 to """{"calls":[
-                        {"callId":"c1","parentId":"me","state":"ANALYZED","startedAt":"2026-10-20T03:00:00Z","recorded":true}]}"""
+                    path == "/v1/parents/son/calls" -> 200 to """{"calls":[
+                        {"callId":"c1","parentId":"son","state":"ANALYZED","startedAt":"2026-10-20T03:00:00Z","recorded":true}]}"""
+                    path == "/v1/parents/daughter/calls" -> 200 to """{"calls":[
+                        {"callId":"c2","parentId":"daughter","state":"ANALYZED","startedAt":"2026-10-21T03:00:00Z","recorded":true}]}"""
                     path.endsWith("/baseline") -> 200 to """{"baselines":[]}"""
                     else -> 500 to """{"code":"SERVER","message":"서버 오류"}"""
                 }
@@ -208,9 +230,12 @@ class HomeSummaryTests {
             fixture.environment.family.refresh(fixture.environment)
             val model = HomeViewModel()
             model.refresh(fixture.environment, fixture.environment.family.selectedContact)
-            val at = Instant.parse("2026-10-20T03:00:00Z")
-            assertEquals(mapOf("k1" to at, "k2" to at), model.lastCallAt)
-            assertEquals(1, fixture.paths.count { it.endsWith("/calls") })
+            assertEquals(
+                mapOf("k1" to Instant.parse("2026-10-20T03:00:00Z"), "k2" to Instant.parse("2026-10-21T03:00:00Z")),
+                model.lastCallAt,
+            )
+            assertTrue(fixture.paths.none { it.startsWith("/v1/parents/me/") })
+            assertEquals("/v1/parents/son/reports", fixture.paths.last { it.endsWith("/reports") })
         } finally {
             fixture.cleanUp()
         }

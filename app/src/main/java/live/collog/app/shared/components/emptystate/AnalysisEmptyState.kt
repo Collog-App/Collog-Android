@@ -116,8 +116,7 @@ fun AnalysisEmptyState(
     }
     val actionTitle = when (action) {
         AnalysisEmptyAction.Processing -> "통화 상태 보기"
-        AnalysisEmptyAction.Family ->
-            if (environment.session.user?.role == "PARENT") "초대 코드 입력하기" else "가족 초대하기"
+        AnalysisEmptyAction.Family -> "가족 초대하기"
         AnalysisEmptyAction.Call -> "${contact?.name ?: "가족"}에게 전화하기"
         AnalysisEmptyAction.CurrentWeek -> "이번 주 보기"
         AnalysisEmptyAction.None -> null

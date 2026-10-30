@@ -18,16 +18,17 @@ class FamilySelectionTests {
         }
     }
 
-    private fun members(parents: List<String>): String {
-        val parentJson = parents.map {
-            """{"memberId":"$it","userId":"$it","name":"Parent","relation":"PARENT","status":"ACTIVE","role":"PARENT"}"""
+    /** [connected]는 나를 뺀 연결된 구성원. 예전 서버의 역할을 번갈아 붙여도 모두 연락처가 된다. */
+    private fun members(connected: List<String>): String {
+        val connectedJson = connected.mapIndexed { index, id ->
+            val role = if (index % 2 == 0) "PARENT" else "CHILD"
+            """{"memberId":"$id","userId":"$id","name":"Family","relation":"SIBLING","status":"ACTIVE","role":"$role"}"""
         }
         val excluded = listOf(
             """{"memberId":"self","userId":"me","name":"Self","relation":"CHILD","status":"ACTIVE","role":"CHILD"}""",
-            """{"memberId":"sibling","userId":"sibling","name":"Sibling","relation":"CHILD","status":"ACTIVE","role":"CHILD"}""",
-            """{"memberId":"invited","userId":null,"name":"Invited","relation":"PARENT","status":"INVITED","role":"PARENT"}""",
+            """{"memberId":"invited","userId":null,"name":"Invited","relation":"MOTHER","status":"INVITED","role":"PARENT"}""",
         )
-        return """{"members":[${(parentJson + excluded).joinToString(",")}]}"""
+        return """{"members":[${(connectedJson + excluded).joinToString(",")}]}"""
     }
 
     private fun respondWith(fixture: TestEnvironment, parents: () -> List<String>) {
@@ -38,6 +39,16 @@ class FamilySelectionTests {
                 200 to """{"source":"fixture","questions":[]}"""
             }
         }
+    }
+
+    @Test
+    fun everyOtherConnectedMemberIsAContactWhateverTheRole() = withFixture { fixture ->
+        respondWith(fixture) { listOf("mom", "sibling", "grandma") }
+        val store = fixture.environment.family
+        store.refresh(fixture.environment)
+        assertEquals(listOf("mom", "sibling", "grandma"), store.contacts.map { it.id })
+        // 오늘의 질문은 고른 가족(첫 번째)의 것
+        assertEquals("/v1/parents/mom/daily-questions", fixture.paths.last())
     }
 
     @Test

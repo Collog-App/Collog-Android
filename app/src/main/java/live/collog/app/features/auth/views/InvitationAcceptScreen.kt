@@ -38,9 +38,9 @@ import live.collog.app.shared.ui.designsystem.Spacing
 import live.collog.app.shared.ui.designsystem.pretendardPlain
 import live.collog.app.shared.ui.pressable
 
-/** iOS `InvitationAcceptView`. 시트 안에서는 [showsAccountActions]를 끈다. */
+/** iOS `InvitationAcceptView`. 설정의 초대 코드 입력 시트([InvitationAcceptSheet]) 안에서 쓴다. */
 @Composable
-fun InvitationAcceptScreen(showsAccountActions: Boolean = true, onCompleted: () -> Unit) {
+fun InvitationAcceptScreen(onCompleted: () -> Unit) {
     val environment = LocalAppEnvironment.current
     val scope = rememberCoroutineScope()
     var code by remember { mutableStateOf("") }
@@ -129,10 +129,6 @@ fun InvitationAcceptScreen(showsAccountActions: Boolean = true, onCompleted: () 
                 style = CollogType.body01Semibold,
                 color = CollogColors.gray00,
             )
-        }
-
-        if (showsAccountActions) {
-            OnboardingAccountActions(enabled = !isSubmitting)
         }
     }
 }

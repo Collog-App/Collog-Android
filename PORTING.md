@@ -17,7 +17,7 @@
 | `APIError` | `ApiError` (sealed). `error.localizedDescription` → `error.message` |
 | `Date.fromCollogTimestamp` | `CollogTimestamp.parse` |
 | `TabManager`, `NavigationStore`, `NavigationManager`, `Route`, `MainTab` | `shared/navigation/Navigation.kt`, `LocalTabManager`, `LocalNavigationStore`, `LocalNavigationManager` |
-| `HealthCondition`, `UserRoleOption`, `PreviewQuestion`, `FamilyContact` | 같은 이름 (`shared/models/`, `features/home/models/`). enum은 `UserRoleOption.Parent.rawValue` 식 |
+| `HealthCondition`, `PreviewQuestion`, `FamilyContact` | 같은 이름 (`shared/models/`, `features/home/models/`). enum은 `HealthCondition.Rhinitis.rawValue` 식. iOS `UserRoleOption`(부모·자녀)은 옮기지 않는다: 앱에 역할이 없다 |
 | `Color.gray900` 등 | `CollogColors.gray900` |
 | `.headline_02(.gray900)` 등 | `Text(t, style = CollogType.headline02, color = CollogColors.gray900)` (`body_02_semibold` → `body02Semibold`) |
 | `.pretendard(.semiBold, 15, c)` / `pretendardStyle(...)` | `pretendard(Pretendard.SemiBold, 15f)` / `pretendardPlain(...)` |

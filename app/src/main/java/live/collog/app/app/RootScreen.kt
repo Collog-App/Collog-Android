@@ -43,11 +43,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import live.collog.app.config.LocalAppEnvironment
 import live.collog.app.features.auth.viewmodels.AuthFlowViewModel
-import live.collog.app.features.auth.views.ConsentScreen
-import live.collog.app.features.auth.views.HealthProfileSetupScreen
-import live.collog.app.features.auth.views.InvitationAcceptScreen
-import live.collog.app.features.auth.views.LoginScreen
 import live.collog.app.features.auth.views.OnboardingScreen
+import live.collog.app.features.auth.views.PASS_ENABLED
+import live.collog.app.features.auth.views.PassVerificationScreen
+import live.collog.app.features.auth.views.SignUpConditionsScreen
+import live.collog.app.features.auth.views.SignUpScreen
+import live.collog.app.features.auth.views.TermsScreen
 import live.collog.app.features.call.models.CallPhase
 import live.collog.app.features.call.services.CallCenter
 import live.collog.app.features.call.services.LocalCallCenter
@@ -79,7 +80,7 @@ import live.collog.app.shared.ui.OnChange
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogType
 
-/** iOS `RootView`. 인증 단계에 따라 화면을 고르고, 준비되면 탭 화면과 통화 화면을 띄운다. */
+/** iOS `RootView`. 가입 단계(AuthFlowViewModel)에 따라 화면을 고르고, 준비되면 탭 화면과 통화 화면을 띄운다. */
 @Composable
 fun RootScreen() {
     val environment = LocalAppEnvironment.current
@@ -146,7 +147,7 @@ fun RootScreen() {
     OnChange(environment.session.user) { previous, current ->
         callCenter.sessionDidChange()
         if (previous == null || current == null) return@OnChange
-        if (previous.role == current.role && previous.familyId == current.familyId) return@OnChange
+        if (previous.familyId == current.familyId) return@OnChange
         launcher.dismiss()
         navigation = NavigationStore()
         tabManager.selectedTab = MainTab.Home
@@ -177,10 +178,6 @@ fun RootScreen() {
                 when (step) {
                     AuthFlowViewModel.Step.Launching -> Box(Modifier.fillMaxSize().background(CollogColors.gray50))
                     AuthFlowViewModel.Step.Onboarding -> OnboardingScreen {
-                        environment.settings.onboardingCompleted = true
-                        resolve()
-                    }
-                    AuthFlowViewModel.Step.Login -> LoginScreen {
                         callCenter.registerDeviceIfPossible()
                         if (environment.session.isAuthenticated) {
                             callCenter.updateNotificationAuthorization()
@@ -188,15 +185,23 @@ fun RootScreen() {
                         }
                         resolve()
                     }
-                    AuthFlowViewModel.Step.Consent -> ConsentScreen(onAgreed = { resolve() })
-                    AuthFlowViewModel.Step.Invitation -> InvitationAcceptScreen { resolve() }
-                    AuthFlowViewModel.Step.Profile -> HealthProfileSetupScreen { resolve() }
+                    AuthFlowViewModel.Step.Terms -> TermsScreen {
+                        if (PASS_ENABLED) authFlow.advance(AuthFlowViewModel.Step.Pass) else resolve()
+                    }
+                    AuthFlowViewModel.Step.Pass -> PassVerificationScreen(
+                        onBack = { authFlow.advance(AuthFlowViewModel.Step.Terms) },
+                        onVerify = null,
+                    )
+                    AuthFlowViewModel.Step.SignUp -> SignUpScreen(
+                        onBack = { authFlow.advance(AuthFlowViewModel.Step.Terms) },
+                        onCompleted = resolve,
+                    )
+                    AuthFlowViewModel.Step.Conditions -> SignUpConditionsScreen(
+                        onBack = { authFlow.advance(AuthFlowViewModel.Step.SignUp) },
+                        onCompleted = resolve,
+                    )
                     AuthFlowViewModel.Step.Ready -> {
-                        val identity = if (isGuest) {
-                            "guest"
-                        } else {
-                            "${environment.session.user?.id.orEmpty()}-${environment.session.user?.role.orEmpty()}"
-                        }
+                        val identity = if (isGuest) "guest" else environment.session.user?.id.orEmpty()
                         key(identity) {
                             MainTabs(
                                 tabManager = tabManager,

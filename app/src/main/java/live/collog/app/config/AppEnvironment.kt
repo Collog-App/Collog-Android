@@ -6,10 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import java.time.Instant
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
-import live.collog.app.shared.models.UserRoleOption
 import live.collog.app.shared.services.AuthSession
 import live.collog.app.shared.services.FamilyStore
 import live.collog.app.shared.services.api.CollogApi
@@ -38,20 +36,6 @@ class AppEnvironment(
             reportNotifications = emptyList()
         }
         if (!session.isAuthenticated) family.reset()
-    }
-
-    suspend fun subjectParentId(): String? {
-        val user = session.user ?: return null
-        if (user.role == UserRoleOption.Parent.rawValue) return user.id
-        val familyId = user.familyId ?: return null
-        val members = try {
-            api.members(familyId)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            null
-        }
-        return members?.firstOrNull { it.userId != null && it.role != "CHILD" && it.userId != user.id }?.userId
     }
 
     val api: CollogApi

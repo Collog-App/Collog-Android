@@ -19,6 +19,10 @@ data class ApiUser(
     val birthDate: String? = null,
     val email: String? = null,
     val marketingOptIn: Boolean = false,
+    /** "MALE" | "FEMALE" */
+    val gender: String? = null,
+    /** 닉네임까지 정했으면 true(서버 `UserView.signupCompleted`). */
+    val signupCompleted: Boolean = false,
 )
 
 @Serializable
@@ -35,11 +39,11 @@ data class LoginChallenge(
     val expiresIn: Int,
 )
 
+/** 역할은 보내지 않는다. 서버는 응답 호환용으로 CHILD 를 저장하고 가족을 만들지 않는다. */
 @Serializable
 data class GoogleLoginBody(
     val idToken: String,
     val challengeId: String,
-    val role: String,
     val name: String? = null,
 )
 
@@ -48,6 +52,14 @@ data class RefreshTokenBody(val refreshToken: String)
 
 @Serializable
 data class PreferencesBody(val marketingOptIn: Boolean)
+
+/** `PATCH /v1/account/profile`. [birthDate]는 "YYYY-MM-DD", [gender]는 "MALE" | "FEMALE". */
+@Serializable
+data class AccountProfileBody(val nickname: String, val gender: String, val birthDate: String)
+
+/** `GET /v1/account/nickname-availability`. [reason]은 "TAKEN" | "INVALID" | null. */
+@Serializable
+data class NicknameAvailability(val available: Boolean, val reason: String? = null)
 
 @Serializable
 data class InvitationAccepted(

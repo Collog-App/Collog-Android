@@ -83,10 +83,11 @@ class MemoryPreferences : SharedPreferences {
 
 /**
  * iOS `TestEnvironment`: 로그인된 환경과 가짜 서버. [respond]가 요청마다 (상태 코드, 본문)을 돌려준다.
- * 끝나면 [cleanUp]을 부른다.
+ * 끝나면 [cleanUp]을 부른다. [role]은 서버가 호환용으로 보내는 값일 뿐 앱은 보지 않는다(새 계정은 CHILD 로 저장된다).
+ * [signupCompleted]가 true면 닉네임까지 정한 가입이 끝난 사용자다.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class TestEnvironment(role: String = "PARENT", familyId: String? = "family") {
+class TestEnvironment(role: String = "CHILD", familyId: String? = "family", signupCompleted: Boolean = true) {
     val preferences = MemoryPreferences()
     val credentials = MemoryCredentials()
     // OkHttp가 자기 스레드에서 요청을 기록하므로 동기화된 목록을 쓴다.
@@ -117,7 +118,6 @@ class TestEnvironment(role: String = "PARENT", familyId: String? = "family") {
 
     init {
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        preferences.edit().putBoolean(AppSettings.Key.ONBOARDING_COMPLETED, true).apply()
         val session = AuthSession(
             credentialStore = credentials,
             http = http,
@@ -127,7 +127,15 @@ class TestEnvironment(role: String = "PARENT", familyId: String? = "family") {
             TokenResponse(
                 accessToken = "fixture-token",
                 refreshToken = "fixture-refresh",
-                user = ApiUser(id = "me", role = role, name = "Tester", phone = null, familyId = familyId),
+                user = ApiUser(
+                    id = "me",
+                    role = role,
+                    name = "Tester",
+                    phone = null,
+                    familyId = familyId,
+                    nickname = if (signupCompleted) "테스터" else null,
+                    signupCompleted = signupCompleted,
+                ),
             ),
         )
         environment = AppEnvironment(

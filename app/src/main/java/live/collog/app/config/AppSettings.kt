@@ -15,14 +15,12 @@ class AppSettings(
         const val CALL_NOTIFICATIONS_ENABLED = "settings.callNotificationsEnabled"
         const val REPORT_NOTIFICATIONS_ENABLED = "settings.reportNotificationsEnabled"
         const val QUESTION_VOICE_ENABLED = "settings.questionVoiceEnabled"
-        const val ONBOARDING_COMPLETED = "settings.onboardingCompleted"
         const val GUEST_MODE = "settings.guestMode"
     }
 
     var callNotificationsEnabled by BooleanPreference(Key.CALL_NOTIFICATIONS_ENABLED, true)
     var reportNotificationsEnabled by BooleanPreference(Key.REPORT_NOTIFICATIONS_ENABLED, true)
     var questionVoiceEnabled by BooleanPreference(Key.QUESTION_VOICE_ENABLED, true)
-    var onboardingCompleted by BooleanPreference(Key.ONBOARDING_COMPLETED, false)
     var isGuestMode by BooleanPreference(Key.GUEST_MODE, false)
 
     val resolvedBaseUrl: String get() = backendBaseUrl.trimEnd('/')

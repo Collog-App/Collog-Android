@@ -58,7 +58,7 @@ class AuthSession(
     private fun store(response: TokenResponse, cancelRefresh: Boolean) {
         credentialStore.write(response)
         storageError = null
-        if (user?.id != response.user.id || user?.role != response.user.role) {
+        if (user?.id != response.user.id) {
             generation = UUID.randomUUID()
             if (cancelRefresh) refreshTask?.cancel()
             refreshTask = null
@@ -111,7 +111,7 @@ class AuthSession(
                 val response = api.refreshSession(refreshToken)
                 if (currentGeneration != generation) throw ApiError.Unauthenticated
                 var refreshedUser = response.user
-                if (user?.id == refreshedUser.id && user?.role == refreshedUser.role) {
+                if (user?.id == refreshedUser.id) {
                     refreshedUser = refreshedUser.copy(familyId = user?.familyId ?: refreshedUser.familyId)
                 }
                 store(TokenResponse(response.accessToken, response.refreshToken, refreshedUser), cancelRefresh = false)

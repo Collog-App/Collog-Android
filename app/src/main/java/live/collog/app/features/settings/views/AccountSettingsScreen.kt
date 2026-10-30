@@ -264,7 +264,7 @@ fun AccountSettingsScreen(onClose: (() -> Unit)? = null) {
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = CollogColors.gray50,
         ) {
-            ConsentScreen(onAgreed = ::closeConsent, showsAccountActions = false)
+            ConsentScreen(onAgreed = ::closeConsent)
         }
     }
     if (confirmsRevocation) {

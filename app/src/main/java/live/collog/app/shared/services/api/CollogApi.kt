@@ -16,12 +16,12 @@ class CollogApi(val client: CollogApiClient) {
             ),
         )
 
-    suspend fun loginWithGoogle(idToken: String, challengeId: String, role: String, name: String?): TokenResponse =
+    suspend fun loginWithGoogle(idToken: String, challengeId: String, name: String?): TokenResponse =
         client.send(
             ApiEndpoint(
                 path = "/v1/auth/google",
                 method = HttpMethod.POST,
-                body = body(GoogleLoginBody(idToken = idToken, challengeId = challengeId, role = role, name = name)),
+                body = body(GoogleLoginBody(idToken = idToken, challengeId = challengeId, name = name)),
                 requiresAuth = false,
             ),
         )
@@ -217,6 +217,19 @@ class CollogApi(val client: CollogApiClient) {
                 path = "/v1/account/preferences",
                 method = HttpMethod.PATCH,
                 body = body(PreferencesBody(marketingOptIn)),
+            ),
+        )
+
+    suspend fun nicknameAvailability(nickname: String): NicknameAvailability =
+        client.send(ApiEndpoint(path = "/v1/account/nickname-availability", query = listOf("nickname" to nickname)))
+
+    /** 가입 정보. 닉네임이 이미 있으면 409, 형식이 틀리면 422. */
+    suspend fun updateAccountProfile(nickname: String, gender: String, birthDate: String): ApiUser =
+        client.send(
+            ApiEndpoint(
+                path = "/v1/account/profile",
+                method = HttpMethod.PATCH,
+                body = body(AccountProfileBody(nickname, gender, birthDate)),
             ),
         )
 

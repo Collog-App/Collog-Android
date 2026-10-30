@@ -31,15 +31,3 @@ enum class HealthCondition(val rawValue: String, val title: String, val collecte
         fun from(raw: String): HealthCondition? = entries.firstOrNull { it.rawValue == raw }
     }
 }
-
-enum class UserRoleOption(val rawValue: String, val title: String) {
-    Child("CHILD", "자녀"),
-    Parent("PARENT", "부모"),
-    ;
-
-    val id: String get() = rawValue
-
-    companion object {
-        fun from(raw: String?): UserRoleOption? = entries.firstOrNull { it.rawValue == raw }
-    }
-}

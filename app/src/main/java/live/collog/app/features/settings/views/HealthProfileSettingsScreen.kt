@@ -294,15 +294,20 @@ private fun ConditionSummaryRow(condition: HealthCondition) {
 private fun conditionDescription(condition: HealthCondition): String =
     "수집 정보: ${condition.collected}\n활용: ${condition.usage}"
 
-/** 피그마 질환 선택(269:3917): 질환 고르기 + 추가로 걱정되는 부분. 고른 질환의 설명 상자(277:5137)는 그 아래에 보인다. */
+/**
+ * 피그마 질환 선택(269:3917): 질환 고르기 + 추가로 걱정되는 부분. 고른 질환의 설명 상자(277:5137)는 그 아래에 보인다.
+ * 가입의 나의 질환 단계도 이 편집기를 [title]·[saveLabel]만 바꿔 쓴다.
+ */
 @Composable
-private fun HealthProfileEditor(
+internal fun HealthProfileEditor(
     initialSelection: HealthSelection,
     initialConcerns: String,
     onCancel: () -> Unit,
     onSave: suspend (HealthSelection, String) -> Unit,
     modifier: Modifier = Modifier,
     bottomInset: Dp = 0.dp,
+    title: String = "질환 프로필 편집",
+    saveLabel: String = "저장",
 ) {
     val scope = rememberCoroutineScope()
     var selection by remember { mutableStateOf(initialSelection) }
@@ -331,7 +336,7 @@ private fun HealthProfileEditor(
     }
 
     Column(modifier.imePadding()) {
-        SettingsDetailHeader("질환 프로필 편집", onBack = onCancel)
+        SettingsDetailHeader(title, onBack = onCancel)
 
         Column(
             Modifier
@@ -407,7 +412,7 @@ private fun HealthProfileEditor(
                 .padding(horizontal = Spacing.x5)
                 .padding(top = Spacing.x2, bottom = Spacing.x2 + bottomInset),
         ) {
-            SettingsActionButton(if (isSaving) "저장 중" else "저장", Modifier.fillMaxWidth(), enabled = canSave, onClick = ::save)
+            SettingsActionButton(if (isSaving) "저장 중" else saveLabel, Modifier.fillMaxWidth(), enabled = canSave, onClick = ::save)
         }
     }
 }

@@ -31,7 +31,7 @@ class TimelineViewModelTests {
         TimelineWeekPage.today = originalToday
     }
 
-    private fun withFixture(role: String = "PARENT", body: suspend (TestEnvironment) -> Unit) = runTest {
+    private fun withFixture(role: String = "CHILD", body: suspend (TestEnvironment) -> Unit) = runTest {
         val fixture = TestEnvironment(role = role)
         try {
             body(fixture)
@@ -64,7 +64,8 @@ class TimelineViewModelTests {
 
     private fun Request.path() = url.encodedPath
 
-    private fun serve(
+    /** 가족 한 명(엄마)을 고른 상태로 만들고, 그 사람의 리포트·통화를 답한다. 가족을 불러온 요청은 지운다. */
+    private suspend fun serve(
         fixture: TestEnvironment,
         callList: (Request) -> String = { calls(call("a"), call("b", "ENDED")) },
         reportStatus: Int = 200,
@@ -72,6 +73,9 @@ class TimelineViewModelTests {
         fixture.respond = { request ->
             val path = request.path()
             when {
+                path.endsWith("/members") ->
+                    200 to """{"members":[{"memberId":"m1","userId":"mom","name":"엄마","relation":"MOTHER","status":"ACTIVE"}]}"""
+                path.endsWith("/daily-questions") -> 200 to """{"questions":[]}"""
                 path.endsWith("/baseline") -> 200 to baselines
                 path.endsWith("/reports") -> reportStatus to if (reportStatus == 200) report() else "{}"
                 path.endsWith("/calls") -> 200 to callList(request)
@@ -85,6 +89,9 @@ class TimelineViewModelTests {
                 else -> 404 to "{}"
             }
         }
+        fixture.environment.family.refresh(fixture.environment)
+        fixture.paths.clear()
+        fixture.requests.clear()
     }
 
     @Test
@@ -137,10 +144,12 @@ class TimelineViewModelTests {
     }
 
     @Test
-    fun parentRefreshLoadsReportAndAnalyzedCalls() = withFixture { fixture ->
+    fun refreshLoadsSelectedContactReportAndAnalyzedCalls() = withFixture { fixture ->
         serve(fixture)
         val model = TimelineViewModel()
         model.refresh(fixture.environment)
+        assertTrue(fixture.paths.all { it.startsWith("/v1/parents/mom/") || it.startsWith("/v1/calls/") })
+        assertEquals("엄마", model.selectedMember)
 
         val page = model.page(0)
         assertTrue(page.isLoaded)
@@ -238,7 +247,7 @@ class TimelineViewModelTests {
     }
 
     @Test
-    fun childUsesSelectedFamilyContactAndResetsOnSelection() = withFixture(role = "CHILD") { fixture ->
+    fun usesSelectedFamilyContactAndResetsOnSelection() = withFixture { fixture ->
         fixture.respond = { request ->
             val path = request.path()
             when {
@@ -279,11 +288,13 @@ class TimelineViewModelTests {
     }
 
     @Test
-    fun missingFamilyContactShowsFamilyLoadError() = withFixture(role = "CHILD") { fixture ->
+    fun missingFamilyContactShowsFamilyLoadError() = withFixture(role = "PARENT") { fixture ->
         fixture.respond = { 503 to "{}" }
         fixture.environment.family.refresh(fixture.environment)
         val model = TimelineViewModel()
         model.refresh(fixture.environment)
+        // 예전 부모 계정이어도 자기 기록을 대신 불러오지 않는다
+        assertEquals(listOf("/v1/families/family/members"), fixture.paths)
 
         val page = model.page(0)
         assertTrue(page.isLoaded)

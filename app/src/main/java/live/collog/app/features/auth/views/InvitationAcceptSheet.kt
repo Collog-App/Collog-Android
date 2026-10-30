@@ -40,7 +40,6 @@ fun InvitationAcceptSheet(onDismiss: () -> Unit, onAccepted: () -> Unit = {}) {
                 onDismiss()
                 onAccepted()
             },
-            showsAccountActions = false,
         )
     }
 }

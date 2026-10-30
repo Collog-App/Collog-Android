@@ -27,6 +27,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
@@ -45,9 +46,12 @@ import live.collog.app.shared.ui.designsystem.Spacing
 import live.collog.app.shared.ui.designsystem.pretendardPlain
 import live.collog.app.shared.ui.pressable
 
-/** iOS `ConsentView`. 문서 끝까지 스크롤하고 필수 항목을 모두 체크해야 동의할 수 있다. */
+/**
+ * iOS `ConsentView`. 문서 끝까지 스크롤하고 필수 항목을 모두 체크해야 동의할 수 있다.
+ * 가입 때는 약관 화면(TermsScreen)이 동의를 받고, 이 화면은 설정의 「통화 분석 동의 확인 및 변경」에서만 쓴다.
+ */
 @Composable
-fun ConsentScreen(onAgreed: () -> Unit, showsAccountActions: Boolean = true) {
+fun ConsentScreen(onAgreed: () -> Unit) {
     val environment = LocalAppEnvironment.current
     val scope = rememberCoroutineScope()
 
@@ -207,10 +211,6 @@ fun ConsentScreen(onAgreed: () -> Unit, showsAccountActions: Boolean = true) {
                     enabled = document != null && !isSubmitting && !isLoading,
                 ) { submit(granted = false) }
             }
-
-            if (showsAccountActions) {
-                OnboardingAccountActions(enabled = !isSubmitting)
-            }
         }
     }
 }
@@ -240,4 +240,14 @@ private fun CheckRow(item: String, checked: Boolean, onToggle: () -> Unit) {
         )
         Text(ConsentItemLabel.korean(item), style = CollogType.body02Medium, color = CollogColors.gray900)
     }
+}
+
+/** `.pretendardStyle(.semiBold, 14, .gray800)`을 입힌 iOS 글자 버튼. 꺼지면 흐려진다. */
+@Composable
+private fun PlainTextAction(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    Text(
+        text,
+        style = pretendardPlain(Pretendard.SemiBold, 14f, CollogColors.gray800),
+        modifier = modifier.alpha(if (enabled) 1f else 0.3f).pressable(enabled = enabled, onClick = onClick),
+    )
 }
