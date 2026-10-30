@@ -1,7 +1,12 @@
 package live.collog.app.shared.ui.designsystem
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.LinearGradientShader
+import androidx.compose.ui.graphics.Shader
+import androidx.compose.ui.graphics.ShaderBrush
 
 /** iOS `Color+Extension.swift`와 같은 값. 이름도 그대로 쓴다. */
 object CollogColors {
@@ -52,10 +57,12 @@ object CollogColors {
 
     val assetPlaceholder = Color(0xFFFF0000)
 
-    /** iOS `LinearGradient.avatar` (topTrailing → bottomLeading). */
-    val avatarGradient: Brush = Brush.linearGradient(
-        colors = listOf(Color(0xFFFFFBBF), Color(0xFF26CF85)),
-        start = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, 0f),
-        end = androidx.compose.ui.geometry.Offset(0f, Float.POSITIVE_INFINITY),
-    )
+    /** 피그마 「최종본」 아바타(269:5150): 상자 기준 (0.76, 0.5) → (0.05, 1.0). */
+    val avatarGradient: Brush = object : ShaderBrush() {
+        override fun createShader(size: Size): Shader = LinearGradientShader(
+            from = Offset(size.width * 0.76f, size.height * 0.5f),
+            to = Offset(size.width * 0.05f, size.height),
+            colors = listOf(Color(0xFFFFFBBF), Color(0xFF26CF85)),
+        )
+    }
 }

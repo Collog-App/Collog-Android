@@ -14,6 +14,7 @@ enum class CallPhase(val statusText: String) {
 object CallDurationFormatter {
     fun text(intervalSeconds: Double): String {
         val total = intervalSeconds.toInt().coerceAtLeast(0)
-        return "%02d:%02d:%02d".format(total / 3600, (total % 3600) / 60, total % 60)
+        // 피그마 「최종본」 통화 중 화면: 「00 : 03 : 43」
+        return "%02d : %02d : %02d".format(total / 3600, (total % 3600) / 60, total % 60)
     }
 }

@@ -67,6 +67,6 @@ private fun ActionButton(
         Box(Modifier.size(72.dp).background(color, CircleShape), contentAlignment = Alignment.Center) {
             CollogIcon(symbol, size = 30.dp, color = CollogColors.gray00)
         }
-        Text(title, style = CollogType.body03Medium, color = CollogColors.gray00)
+        Text(title, style = CollogType.body03Medium, color = CollogColors.gray700)
     }
 }

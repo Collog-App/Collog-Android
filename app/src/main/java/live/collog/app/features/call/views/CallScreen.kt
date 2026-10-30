@@ -1,8 +1,6 @@
 package live.collog.app.features.call.views
 
-import android.app.Activity
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +10,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -32,27 +30,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import live.collog.app.features.call.models.CallDurationFormatter
 import live.collog.app.features.call.models.CallPhase
+import live.collog.app.shared.components.HealthCrossBadge
 import live.collog.app.shared.ui.pressable
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogIcon
 import live.collog.app.shared.ui.designsystem.CollogType
 import live.collog.app.shared.ui.designsystem.Pretendard
-import live.collog.app.shared.ui.designsystem.Radius
 import live.collog.app.shared.ui.designsystem.Spacing
 import live.collog.app.shared.ui.designsystem.pretendard
 
-/** iOS `CallView`. 전체 화면 통화 UI: 상태·타이머, 오늘의 질문, 음소거·스피커, 종료/수신 버튼. */
+/** 피그마 「최종본」 통화 화면(269:5141 연결 중, 269:5187 통화 중). 상태·타이머, 오늘의 건강 질문, 음소거·스피커, 종료/수신 버튼. */
 @Composable
 fun CallScreen(
     peerName: String,
@@ -85,20 +82,10 @@ fun CallScreen(
         }
     }
 
-    // iOS preferredColorScheme(.dark): 상태 표시줄 아이콘을 밝게
-    val view = LocalView.current
-    DisposableEffect(view) {
-        val window = (view.context as? Activity)?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
-        val previous = controller?.isAppearanceLightStatusBars
-        controller?.isAppearanceLightStatusBars = false
-        onDispose { if (previous != null) controller.isAppearanceLightStatusBars = previous }
-    }
-
     Column(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF171A20), Color(0xFF07080A))))
+            .background(CollogColors.gray00)
             .windowInsetsPadding(WindowInsets.statusBars),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -113,14 +100,14 @@ fun CallScreen(
             isIncoming = isIncoming,
             isAnswering = isAnswering,
             elapsedSeconds = elapsedMillis / 1000.0,
-            modifier = Modifier.padding(top = if (notice == null) Spacing.x8 else Spacing.x5),
+            modifier = Modifier.padding(top = if (notice == null) 47.dp else Spacing.x5),
         )
 
         if (!isIncoming) {
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                 QuestionList(
                     questions,
-                    Modifier.padding(top = Spacing.x8, bottom = Spacing.x4),
+                    Modifier.padding(top = 58.dp, bottom = Spacing.x4),
                 )
             }
         } else {
@@ -143,6 +130,10 @@ fun CallScreen(
         }
     }
 }
+
+/** 피그마 글자는 줄 높이가 글자 크기의 약 1.19배라 한 줄 글자에만 맞춘다. */
+private fun singleLine(weight: Pretendard, size: Float): TextStyle =
+    pretendard(weight, size).copy(lineHeight = (size * 1.19f).sp)
 
 @Composable
 private fun AudioControls(
@@ -183,8 +174,8 @@ private fun AudioButton(label: String, symbol: String, state: String, onClick: (
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CollogIcon(symbol, size = 22.dp, color = CollogColors.gray00)
-        Text(label, style = pretendard(Pretendard.Regular, 17f), color = CollogColors.gray00)
+        CollogIcon(symbol, size = 22.dp, color = CollogColors.gray700)
+        Text(label, style = pretendard(Pretendard.Regular, 17f), color = CollogColors.gray700)
     }
 }
 
@@ -197,29 +188,23 @@ private fun Header(
     elapsedSeconds: Double,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.x4)) {
-        Box(
-            Modifier.size(120.dp).background(CollogColors.gray00.copy(alpha = 0.1f), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(peerName.take(1), style = pretendard(Pretendard.SemiBold, 40f), color = CollogColors.gray00)
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(21.dp)) {
+            Box(Modifier.size(100.dp).background(CollogColors.avatarGradient, CircleShape))
+            Text(peerName, style = singleLine(Pretendard.Medium, 30f), color = Color.Black)
         }
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
-            Text(peerName, style = CollogType.headline02, color = CollogColors.gray00)
-
-            val status = pretendard(Pretendard.Medium, 16f)
-            if (isIncoming) {
-                Text(if (isAnswering) "전화를 받고 있어요" else "전화가 왔어요", style = status, color = CollogColors.gray400)
-            } else if (phase.showsTimer) {
-                Text(
-                    CallDurationFormatter.text(elapsedSeconds),
-                    style = status.copy(fontFeatureSettings = "tnum"),
-                    color = CollogColors.gray400,
-                )
-            } else {
-                Text(phase.statusText, style = status, color = CollogColors.gray400)
-            }
+        val status = singleLine(Pretendard.Medium, 22f)
+        if (isIncoming) {
+            Text(if (isAnswering) "전화를 받고 있어요" else "전화가 왔어요", style = status, color = CollogColors.gray700)
+        } else if (phase.showsTimer) {
+            Text(
+                CallDurationFormatter.text(elapsedSeconds),
+                style = status.copy(fontFeatureSettings = "tnum"),
+                color = CollogColors.gray700,
+            )
+        } else {
+            Text(phase.statusText, style = status, color = CollogColors.gray700)
         }
     }
 }
@@ -227,36 +212,32 @@ private fun Header(
 @Composable
 private fun QuestionList(questions: List<String>, modifier: Modifier = Modifier) {
     Column(
-        modifier.fillMaxWidth().padding(horizontal = Spacing.x5),
-        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+        modifier.fillMaxWidth().padding(horizontal = Spacing.x6),
+        verticalArrangement = Arrangement.spacedBy(Spacing.x4),
     ) {
         if (questions.isNotEmpty()) {
-            Text(
-                "오늘의 질문",
-                style = CollogType.caption01Medium,
-                color = CollogColors.gray500,
-                modifier = Modifier.padding(horizontal = Spacing.x1),
-            )
+            Text("오늘의 건강 질문", style = singleLine(Pretendard.Medium, 15f), color = Color.Black)
         }
 
-        questions.forEachIndexed { index, question ->
-            val shape = RoundedCornerShape(Radius.btnSmall)
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(CollogColors.gray00.copy(alpha = 0.08f), shape)
-                    .border(1.dp, CollogColors.gray00.copy(alpha = 0.06f), shape)
-                    .padding(Spacing.x3),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("%02d".format(index + 1), style = CollogType.caption01Semibold, color = CollogColors.green400)
-                Text(
-                    question,
-                    style = CollogType.body02Medium,
-                    color = CollogColors.gray00,
-                    modifier = Modifier.weight(1f),
-                )
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.x5)) {
+            questions.forEach { question ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 50.dp)
+                        .background(CollogColors.gray100, RoundedCornerShape(10.dp))
+                        .padding(horizontal = Spacing.x5, vertical = 13.dp),
+                    horizontalArrangement = Arrangement.spacedBy(15.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    HealthCrossBadge()
+                    Text(
+                        question,
+                        style = pretendard(Pretendard.Medium, 15f),
+                        color = Color.Black,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }
@@ -266,13 +247,13 @@ private fun QuestionList(questions: List<String>, modifier: Modifier = Modifier)
 private fun EndButton(onEnd: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier
-            .size(72.dp)
+            .size(85.dp)
             .background(CollogColors.red500, CircleShape)
             .pressable(onClick = onEnd)
             .semantics { contentDescription = "통화 종료" },
         contentAlignment = Alignment.Center,
     ) {
-        CollogIcon("phone.down.fill", size = 30.dp, color = CollogColors.gray00)
+        CollogIcon("phone.down.fill", size = 60.dp, color = CollogColors.gray00)
     }
 }
 
@@ -281,10 +262,10 @@ private fun NoticeView(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
         style = CollogType.caption01Medium,
-        color = CollogColors.gray400,
+        color = CollogColors.gray700,
         textAlign = TextAlign.Center,
         modifier = modifier
-            .background(CollogColors.gray00.copy(alpha = 0.08f), CircleShape)
+            .background(CollogColors.gray100, CircleShape)
             .padding(horizontal = Spacing.x4, vertical = Spacing.x2),
     )
 }

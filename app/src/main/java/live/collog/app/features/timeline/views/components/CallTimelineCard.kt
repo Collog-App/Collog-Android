@@ -78,7 +78,9 @@ fun CallTimelineCard(entry: CallTimelineEntry, modifier: Modifier = Modifier) {
 
         DividerLine()
 
-        Text(entry.story, style = CollogType.body02Medium, color = CollogColors.gray900)
+        // 피그마 「최종본」(277:5321): 이야기 앞에 제목
+        Text("나눈 이야기", style = CollogType.caption01Medium, color = CollogColors.gray800)
+        Text(entry.story, style = CollogType.body03Medium, color = CollogColors.gray900)
 
         if (entry.keywords.isNotEmpty()) {
             KeywordTimeline(entry.keywords, Modifier.padding(top = Spacing.x1))
