@@ -15,7 +15,7 @@ data class FamilyContact(
         id = member.memberId,
         userId = member.userId,
         name = member.name,
-        relation = member.relation,
+        relation = member.relation.orEmpty(),
         lastCallText = lastCallText,
     )
 

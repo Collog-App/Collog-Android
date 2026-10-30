@@ -82,7 +82,7 @@ fun InvitationAcceptScreen(showsAccountActions: Boolean = true, onCompleted: () 
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
             Text("가족 초대 코드를 입력해주세요", style = CollogType.headline02, color = CollogColors.gray900)
-            Text("자녀에게 받은 코드로 가족에 참여할 수 있어요", style = CollogType.body02Medium, color = CollogColors.gray800)
+            Text("가족에게 받은 코드로 가족에 참여할 수 있어요", style = CollogType.body02Medium, color = CollogColors.gray800)
         }
 
         BasicTextField(

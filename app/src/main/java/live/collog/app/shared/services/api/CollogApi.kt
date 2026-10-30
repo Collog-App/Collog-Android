@@ -80,6 +80,15 @@ class CollogApi(val client: CollogApiClient) {
     suspend fun familyMembers(familyId: String): FamilyMembersResponse =
         client.send(ApiEndpoint(path = "/v1/families/$familyId/members"))
 
+    /** 가족이 없는 사람의 첫 초대 전에 부른다. 이미 가족이 있으면 그 가족을 돌려준다. */
+    suspend fun createFamily(): String =
+        client.send<FamilyCreated>(ApiEndpoint(path = "/v1/families", method = HttpMethod.POST)).familyId
+
+    /** 대기 중 초대는 구성원 누구나, 연결된 구성원은 가족을 만든 사람 또는 본인이 지운다(204). */
+    suspend fun removeFamilyMember(familyId: String, memberId: String) {
+        client.sendRaw(ApiEndpoint(path = "/v1/families/$familyId/members/$memberId", method = HttpMethod.DELETE))
+    }
+
     suspend fun dailyQuestions(parentId: String): List<ApiQuestion> =
         client.send<DailyQuestionsResponse>(ApiEndpoint(path = "/v1/parents/$parentId/daily-questions")).questions
 
@@ -112,12 +121,13 @@ class CollogApi(val client: CollogApiClient) {
     suspend fun profile(parentId: String): ProfileDto =
         client.send(ApiEndpoint(path = "/v1/parents/$parentId/profile"))
 
-    suspend fun updateProfile(parentId: String, conditions: List<String>): ProfileDto =
+    /** [concerns]가 null이면 저장된 걱정 내용은 그대로 둔다. */
+    suspend fun updateProfile(parentId: String, conditions: List<String>, concerns: String? = null): ProfileDto =
         client.send(
             ApiEndpoint(
                 path = "/v1/parents/$parentId/profile",
                 method = HttpMethod.PUT,
-                body = body(ProfilePutBody(conditions)),
+                body = body(ProfilePutBody(conditions, concerns)),
             ),
         )
 
@@ -201,8 +211,23 @@ class CollogApi(val client: CollogApiClient) {
         )
     }
 
-    suspend fun updateRole(role: String): ApiUser =
-        client.send(ApiEndpoint(path = "/v1/account/role", method = HttpMethod.PATCH, body = body(AccountRoleBody(role))))
+    suspend fun updatePreferences(marketingOptIn: Boolean): ApiUser =
+        client.send(
+            ApiEndpoint(
+                path = "/v1/account/preferences",
+                method = HttpMethod.PATCH,
+                body = body(PreferencesBody(marketingOptIn)),
+            ),
+        )
+
+    /** 내 기록을 볼 수 있는 가족 구성원마다 한 줄. */
+    suspend fun sharing(): List<FamilyShare> =
+        client.send<SharingBody>(ApiEndpoint(path = "/v1/account/sharing")).shares
+
+    suspend fun updateSharing(shares: List<FamilyShare>): List<FamilyShare> =
+        client.send<SharingBody>(
+            ApiEndpoint(path = "/v1/account/sharing", method = HttpMethod.PUT, body = body(SharingBody(shares))),
+        ).shares
 
     /** Google·OTP 계정은 재인증 본문 없이 삭제된다(Apple만 재인증). */
     suspend fun deleteAccount() {

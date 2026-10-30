@@ -1,5 +1,7 @@
 package live.collog.app.features.settings.views
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,72 +11,119 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import live.collog.app.config.LocalAppEnvironment
-import live.collog.app.features.auth.views.InvitationAcceptSheet
+import live.collog.app.features.auth.views.ConsentScreen
 import live.collog.app.features.call.services.LocalCallCenter
-import live.collog.app.features.settings.models.canSaveRole
+import live.collog.app.features.settings.models.GuestSamples
 import live.collog.app.features.settings.models.deleteAccountAndSignOut
-import live.collog.app.features.settings.models.roleText
-import live.collog.app.features.settings.models.showsInvitationCodeRow
-import live.collog.app.features.settings.models.updateAccountRole
+import live.collog.app.features.settings.models.updateMarketingOptIn
 import live.collog.app.features.settings.views.components.SettingsAlert
+import live.collog.app.features.settings.views.components.SettingsBullet
+import live.collog.app.features.settings.views.components.SettingsCallout
+import live.collog.app.features.settings.views.components.SettingsCalloutText
 import live.collog.app.features.settings.views.components.SettingsDetailHeader
-import live.collog.app.features.settings.views.components.SettingsNavigationRow
+import live.collog.app.features.settings.views.components.SettingsLink
 import live.collog.app.features.settings.views.components.SettingsSection
+import live.collog.app.features.settings.views.components.SettingsToggleRow
 import live.collog.app.features.settings.views.components.SettingsValueRow
-import live.collog.app.features.settings.views.components.SystemTextButton
-import live.collog.app.shared.models.UserRoleOption
 import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.ui.CollogProgress
-import live.collog.app.shared.ui.SegmentedPicker
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogType
-import live.collog.app.shared.ui.designsystem.DividerLine
 import live.collog.app.shared.ui.designsystem.Spacing
-import live.collog.app.shared.ui.designsystem.cardSurface
+
+private const val PRIVACY_POLICY_URL = "https://collog-app.github.io/Collog-Privacy/"
 
 /**
- * iOS `AccountSettingsView`. 시트로 띄우면 [onClose]를 넘기고, 탭 안에서 밀어 넣으면 null이다.
- * Apple 재인증(`AppleDeletionAuthorization`)은 없다. Google·전화 계정은 바로 삭제된다.
+ * 피그마 「최종본」 계정 정보(277:5822). 시트로 띄우면 [onClose]를 넘기고, 탭 안에서 밀어 넣으면 null이다.
+ * 소셜 로그인이라 「비밀번호 변경」과 이메일 「변경」은 없다. 피그마에 없는 개인정보처리방침·분석 동의·로그아웃·
+ * 계정 삭제(Play 정책상 앱 안 삭제 필요)는 「개인정보 및 보안」 상자에 둔다.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountSettingsScreen(onClose: (() -> Unit)? = null) {
     val environment = LocalAppEnvironment.current
     val callCenter = LocalCallCenter.current
     val navigator = LocalNavigationManager.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val user = environment.session.user
+    val settings = environment.settings
+    val isGuest = settings.isGuestMode
+    val isAuthenticated = environment.session.isAuthenticated
+    val user = if (isGuest) GuestSamples.user else environment.session.user
 
-    var selectedRole by remember { mutableStateOf(UserRoleOption.from(user?.role) ?: UserRoleOption.Child) }
+    var marketingOptIn by remember(user?.id) { mutableStateOf(user?.marketingOptIn ?: false) }
+    var isUpdatingMarketing by remember { mutableStateOf(false) }
+    var consentGranted by remember { mutableStateOf(false) }
+    var showsConsent by remember { mutableStateOf(false) }
+    var confirmsRevocation by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
-    var confirmsRoleChange by remember { mutableStateOf(false) }
     var confirmsDeletion by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var showsInvitationCode by remember { mutableStateOf(false) }
 
-    val displayName = user?.name ?: "데모 사용자"
-    val role = roleText(user?.role)
     val locked = isSubmitting || callCenter.hasCallInProgress
 
-    fun updateRole() {
-        if (isSubmitting || callCenter.hasCallInProgress) return
+    suspend fun loadConsent() {
+        if (isGuest || !isAuthenticated) return
+        try {
+            val consent = environment.api.myConsent()
+            consentGranted = consent.isCurrent && consent.isGranted
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            consentGranted = false
+        }
+    }
+
+    fun setMarketing(value: Boolean) {
+        marketingOptIn = value
+        if (isGuest || isUpdatingMarketing) return
+        isUpdatingMarketing = true
+        errorMessage = null
+        scope.launch {
+            try {
+                updateMarketingOptIn(environment, value)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                marketingOptIn = !value
+                errorMessage = error.message
+            } finally {
+                isUpdatingMarketing = false
+            }
+        }
+    }
+
+    fun revokeConsent() {
+        if (isSubmitting) return
         isSubmitting = true
         errorMessage = null
         scope.launch {
             try {
-                updateAccountRole(environment, selectedRole)
+                val document = environment.api.consentDocument()
+                environment.api.submitConsent(
+                    documentVersion = document.version,
+                    agreedItems = emptyList(),
+                    decision = "DENY",
+                    scrolledToEnd = false,
+                )
+                loadConsent()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -102,10 +151,18 @@ fun AccountSettingsScreen(onClose: (() -> Unit)? = null) {
         }
     }
 
+    // iOS `.sheet(onDismiss:)`: 동의 시트가 닫히면 상태를 다시 읽는다
+    fun closeConsent() {
+        showsConsent = false
+        scope.launch { loadConsent() }
+    }
+
+    LaunchedEffect(Unit) { loadConsent() }
+
     Column(
         Modifier
             .fillMaxSize()
-            .background(CollogColors.gray50)
+            .background(CollogColors.gray00)
             .then(if (onClose == null) Modifier.statusBarsPadding() else Modifier),
     ) {
         SettingsDetailHeader("계정 정보", onBack = onClose ?: { navigator.pop() })
@@ -115,86 +172,109 @@ fun AccountSettingsScreen(onClose: (() -> Unit)? = null) {
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.x5, vertical = Spacing.x4),
-            verticalArrangement = Arrangement.spacedBy(Spacing.x5),
+                .padding(horizontal = Spacing.x5)
+                .padding(top = 27.dp, bottom = Spacing.x8),
+            verticalArrangement = Arrangement.spacedBy(Spacing.x4),
         ) {
-            Column(Modifier.cardSurface(), verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
-                Text(displayName, style = CollogType.subtitle01, color = CollogColors.gray900)
-                Text(role, style = CollogType.body03Medium, color = CollogColors.gray700)
-            }
-
             SettingsSection("기본 정보") {
-                SettingsValueRow("이름", displayName)
-                DividerLine()
-                user?.phone?.let { phone ->
-                    SettingsValueRow("전화번호", phone)
-                    DividerLine()
-                }
-                SettingsValueRow("역할", role)
-            }
-
-            SettingsSection("가족") {
-                SettingsValueRow("등록된 가족", "${environment.family.contacts.size}명")
-                if (showsInvitationCodeRow(environment.session.isAuthenticated, user?.role)) {
-                    DividerLine()
-                    SettingsNavigationRow("초대 코드 입력", enabled = !locked) { showsInvitationCode = true }
+                SettingsCallout(spacing = 21.dp) {
+                    user?.email?.let { SettingsValueRow("이메일", it) }
+                    SettingsValueRow("이름", user?.let { it.nickname ?: it.name } ?: "데모 사용자")
+                    user?.phone?.let { SettingsValueRow("전화번호", it) }
+                    user?.birthDate?.let { SettingsValueRow("생년월일", it) }
                 }
             }
 
-            if (environment.session.isAuthenticated) {
-                SettingsSection("역할 변경") {
-                    Column(
-                        Modifier.fillMaxWidth().padding(Spacing.x4).alpha(if (locked) 0.3f else 1f),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.x3),
-                    ) {
-                        SegmentedPicker(
-                            options = UserRoleOption.entries,
-                            selection = selectedRole,
-                            onSelect = { selectedRole = it },
-                            label = { it.title },
-                            enabled = !locked,
+            SettingsSection("알림 설정") {
+                Column {
+                    SettingsToggleRow(
+                        label = "통화 알림",
+                        isOn = settings.callNotificationsEnabled,
+                        onIsOnChange = { settings.callNotificationsEnabled = it },
+                    )
+                    SettingsToggleRow(
+                        label = "리포트 발송 알림",
+                        isOn = settings.reportNotificationsEnabled,
+                        onIsOnChange = { settings.reportNotificationsEnabled = it },
+                    )
+                    SettingsToggleRow(
+                        label = "마케팅 소식 수신",
+                        isOn = marketingOptIn,
+                        onIsOnChange = ::setMarketing,
+                        enabled = !isUpdatingMarketing,
+                    )
+                    SettingsToggleRow(
+                        label = "질문 음성 안내",
+                        caption = "상대가 전화를 받기 전에 오늘의 질문을 읽어줘요",
+                        isOn = settings.questionVoiceEnabled,
+                        onIsOnChange = { settings.questionVoiceEnabled = it },
+                    )
+                }
+                callCenter.deviceRegistrationError?.let {
+                    Text(it, style = CollogType.caption01Medium, color = CollogColors.red500)
+                }
+                callCenter.notificationPermissionError?.let {
+                    Text(it, style = CollogType.caption01Medium, color = CollogColors.red500)
+                }
+            }
+
+            SettingsSection("음성 데이터 처리", Modifier.padding(top = Spacing.x4)) {
+                SettingsCallout {
+                    SettingsCalloutText("원본 음성 데이터는 다음 정책을 따릅니다.", Modifier.padding(vertical = 10.dp))
+                    SettingsBullet("음향 신호 추출 후 원본 오디오는 즉시 폐기됩니다.")
+                    SettingsBullet("저장되는 것은 음향 지표와 대화 텍스트뿐입니다.")
+                    SettingsBullet("이 설정은 변경할 수 없습니다.")
+                }
+            }
+
+            SettingsSection("개인정보 및 보안", Modifier.padding(top = Spacing.x4)) {
+                SettingsCallout(spacing = Spacing.x4) {
+                    SettingsLink("개인정보처리방침") {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL)))
+                    }
+                    if (isAuthenticated && !isGuest) {
+                        SettingsLink("통화 분석 동의 확인 및 변경", onClick = { if (!locked) showsConsent = true })
+                        if (consentGranted) {
+                            SettingsLink("통화 분석 동의 철회", onClick = { if (!locked) confirmsRevocation = true })
+                        }
+                    }
+                    if (isAuthenticated) {
+                        SettingsLink("로그아웃", onClick = { if (!locked) scope.launch { environment.signOut() } })
+                        SettingsLink(
+                            "계정 삭제",
+                            color = if (locked) CollogColors.gray600 else CollogColors.red500,
+                            onClick = { if (!locked) confirmsDeletion = true },
                         )
-                        Text(
-                            "부모는 본인의 건강 기록을, 자녀는 가족의 건강 기록을 확인해요.",
-                            style = CollogType.caption01Medium,
-                            color = CollogColors.gray700,
-                        )
-                        SystemTextButton(
-                            "역할 저장",
-                            enabled = !locked && canSaveRole(selectedRole, user?.role),
-                        ) { confirmsRoleChange = true }
                     }
                 }
-
                 if (callCenter.hasCallInProgress) {
-                    Text(
-                        "통화를 마친 뒤 역할 변경과 계정 삭제를 할 수 있어요.",
-                        style = CollogType.caption01Medium,
-                        color = CollogColors.gray700,
-                    )
+                    Text("통화를 마친 뒤 계정 삭제를 할 수 있어요.", style = CollogType.caption01Medium, color = CollogColors.gray700)
                 }
                 errorMessage?.let {
                     Text(it, style = CollogType.caption01Medium, color = CollogColors.red500)
                 }
                 if (isSubmitting) CollogProgress()
-
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    SystemTextButton("계정 삭제", enabled = !locked, destructive = true) { confirmsDeletion = true }
-                }
             }
         }
     }
 
-    if (showsInvitationCode) {
-        InvitationAcceptSheet(onDismiss = { showsInvitationCode = false })
+    if (showsConsent) {
+        ModalBottomSheet(
+            onDismissRequest = ::closeConsent,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = CollogColors.gray50,
+        ) {
+            ConsentScreen(onAgreed = ::closeConsent, showsAccountActions = false)
+        }
     }
-    if (confirmsRoleChange) {
+    if (confirmsRevocation) {
         SettingsAlert(
-            title = "역할을 ${selectedRole.title}(으)로 변경할까요?",
-            message = "가족은 유지돼요. 부모로 변경하면 건강 정보 동의와 프로필 설정이 필요할 수 있어요.",
-            confirmText = "변경",
-            onConfirm = ::updateRole,
-            onDismiss = { confirmsRoleChange = false },
+            title = "통화 분석 동의를 철회할까요?",
+            message = "일반 통화는 계속 이용할 수 있어요. 기존 기록 삭제는 계정 정보에서 요청할 수 있어요.",
+            confirmText = "철회",
+            destructive = true,
+            onConfirm = ::revokeConsent,
+            onDismiss = { confirmsRevocation = false },
         )
     }
     if (confirmsDeletion) {

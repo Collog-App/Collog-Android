@@ -46,6 +46,7 @@ data class ProfileDto(
     val conditions: List<String>,
     val isCompleted: Boolean? = null,
     @Serializable(with = CollogInstantSerializer::class) val updatedAt: Instant? = null,
+    val concerns: String? = null,
 ) {
     val hasCompletedSetup: Boolean get() = isCompleted ?: (updatedAt != null || conditions.isNotEmpty())
 }

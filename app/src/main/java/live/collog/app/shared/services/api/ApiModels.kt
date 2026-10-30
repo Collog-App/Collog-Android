@@ -2,6 +2,7 @@ package live.collog.app.shared.services.api
 
 import java.time.Instant
 import kotlinx.serialization.Serializable
+import live.collog.app.shared.models.familyRelationTitle
 
 // iOS `APIModels.swift`와 필드 이름·뜻이 같다. 서버 JSON이 camelCase라 이름을 그대로 쓴다.
 
@@ -13,6 +14,11 @@ data class ApiUser(
     val phone: String? = null,
     val appleUserId: String? = null,
     val familyId: String? = null,
+    val nickname: String? = null,
+    /** "YYYY-MM-DD" */
+    val birthDate: String? = null,
+    val email: String? = null,
+    val marketingOptIn: Boolean = false,
 )
 
 @Serializable
@@ -41,7 +47,7 @@ data class GoogleLoginBody(
 data class RefreshTokenBody(val refreshToken: String)
 
 @Serializable
-data class AccountRoleBody(val role: String)
+data class PreferencesBody(val marketingOptIn: Boolean)
 
 @Serializable
 data class InvitationAccepted(
@@ -67,22 +73,24 @@ data class FamilyMember(
     val memberId: String,
     val userId: String? = null,
     val name: String,
-    val relation: String,
+    /** 가족을 만든 사람은 비어 있다([isCreator]). */
+    val relation: String? = null,
     val status: String,
     val role: String? = null,
     val invitation: FamilyInvitation? = null,
+    @Serializable(with = CollogInstantSerializer::class) val acceptedAt: Instant? = null,
+    val consentGranted: Boolean = false,
+    val nickname: String? = null,
+    /** "YYYY-MM-DD" */
+    val birthDate: String? = null,
+    val canRemove: Boolean = false,
+    val isCreator: Boolean = false,
 ) {
     val id: String get() = memberId
     val isCallable: Boolean get() = userId != null
 
     val relationTitle: String
-        get() = when (relation) {
-            "MOTHER" -> "어머니"
-            "FATHER" -> "아버지"
-            "CHILD" -> "자녀"
-            "PARENT" -> "부모"
-            else -> name
-        }
+        get() = familyRelationTitle(relation) ?: name
 }
 
 @Serializable
@@ -110,6 +118,22 @@ data class FamilySummary(val familyId: String, val name: String) {
 
 @Serializable
 data class FamiliesResponse(val families: List<FamilySummary>)
+
+@Serializable
+data class FamilyCreated(val familyId: String)
+
+/** `GET/PUT /v1/account/sharing`의 한 줄: [viewerUserId]가 내 리포트·타임라인을 볼 수 있는지. */
+@Serializable
+data class FamilyShare(
+    val viewerUserId: String,
+    val viewerName: String,
+    val relation: String? = null,
+    val report: Boolean = true,
+    val timeline: Boolean = true,
+)
+
+@Serializable
+data class SharingBody(val shares: List<FamilyShare>)
 
 @Serializable
 data class ApiQuestion(
@@ -226,7 +250,11 @@ data class ConsentSubmitBody(
 )
 
 @Serializable
-data class ProfilePutBody(val conditions: List<String>)
+data class ProfilePutBody(
+    val conditions: List<String>,
+    /** null이면 보내지 않아 서버가 저장된 내용을 그대로 둔다. 빈 글자는 지운다. */
+    val concerns: String? = null,
+)
 
 @Serializable
 data class InvitationCreateBody(val name: String, val relation: String)

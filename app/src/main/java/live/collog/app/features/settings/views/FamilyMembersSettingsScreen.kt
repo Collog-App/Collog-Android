@@ -1,7 +1,7 @@
 package live.collog.app.features.settings.views
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -34,22 +33,35 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import live.collog.app.config.LocalAppEnvironment
 import live.collog.app.features.auth.views.InvitationAcceptSheet
+import live.collog.app.features.settings.models.GuestSamples
 import live.collog.app.features.settings.models.ManagedFamilyMember
+import live.collog.app.features.settings.models.ProfileTarget
+import live.collog.app.features.settings.models.canEnterInvitationCode
 import live.collog.app.features.settings.models.canInviteFamily
+import live.collog.app.features.settings.models.otherMembers
+import live.collog.app.features.settings.views.components.MemberTitle
+import live.collog.app.features.settings.views.components.SettingsActionButton
+import live.collog.app.features.settings.views.components.SettingsAlert
+import live.collog.app.features.settings.views.components.SettingsCallout
+import live.collog.app.features.settings.views.components.SettingsCalloutText
 import live.collog.app.features.settings.views.components.SettingsDetailHeader
+import live.collog.app.features.settings.views.components.SettingsLink
+import live.collog.app.features.settings.views.components.SettingsMutedColor
 import live.collog.app.features.settings.views.components.SystemTextButton
 import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.services.api.FamilyInvitation
 import live.collog.app.shared.services.api.FamilySummary
+import live.collog.app.shared.ui.Haptics
 import live.collog.app.shared.ui.designsystem.CollogColors
-import live.collog.app.shared.ui.designsystem.CollogIcon
 import live.collog.app.shared.ui.designsystem.CollogType
-import live.collog.app.shared.ui.designsystem.Radius
+import live.collog.app.shared.ui.designsystem.Pretendard
 import live.collog.app.shared.ui.designsystem.Spacing
+import live.collog.app.shared.ui.designsystem.singleLine
 import live.collog.app.shared.ui.pressable
 
 /**
- * iOS `FamilyMembersSettingsView`. 홈의 시트로 띄우면 [onClose]를 넘기고, 설정 탭 안에서는 null이다.
+ * 피그마 「최종본」 가족 구성원 관리(277:5984). 홈의 시트로 띄우면 [onClose]를 넘기고, 설정 탭 안에서는 null이다.
+ * 역할 구분 없이 누구나 초대하고, 가족이 없으면 첫 초대 때 가족을 만든다.
  */
 @Composable
 fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
@@ -59,24 +71,28 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
 
     var members by remember { mutableStateOf<List<ManagedFamilyMember>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    var showsInvitation by remember { mutableStateOf(false) }
-    var selectedInvitation by remember { mutableStateOf<FamilyInvitation?>(null) }
     var errorText by remember { mutableStateOf<String?>(null) }
-    var serverAllowsInvitations by remember { mutableStateOf(false) }
-    var showsInvitationCode by remember { mutableStateOf(false) }
+    var noticeText by remember { mutableStateOf<String?>(null) }
+    var serverAllowsInvitations by remember { mutableStateOf(true) }
     var families by remember { mutableStateOf<List<FamilySummary>>(emptyList()) }
+    var showsInvitation by remember { mutableStateOf(false) }
+    var showsInvitationCode by remember { mutableStateOf(false) }
+    var selectedInvitation by remember { mutableStateOf<FamilyInvitation?>(null) }
+    var removalCandidate by remember { mutableStateOf<ManagedFamilyMember?>(null) }
+    var isRemoving by remember { mutableStateOf(false) }
+    // 시트 안에서는 탭 화면 스택이 없으므로 질환 프로필을 이 화면 안에서 바꿔 그린다
+    var sheetProfile by remember { mutableStateOf<ProfileTarget?>(null) }
 
-    val role = environment.session.user?.role
     val isGuest = environment.settings.isGuestMode
-    val canInvite = canInviteFamily(isGuest, role, serverAllowsInvitations)
+    val canInvite = canInviteFamily(isGuest, environment.session.familyId != null, serverAllowsInvitations)
+    val canEnterCode = canEnterInvitationCode(isGuest, members)
 
     suspend fun load() {
         isLoading = true
         errorText = null
-        serverAllowsInvitations = false
         try {
             if (isGuest) {
-                members = environment.family.contacts.map(::ManagedFamilyMember)
+                members = GuestSamples.members
                 return
             }
             val userId = environment.session.user?.id
@@ -97,8 +113,8 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
                 }
                 val remote = environment.api.familyMembers(familyId)
                 if (environment.session.user?.id != userId || environment.session.familyId != familyId) return
-                members = remote.members.map(::ManagedFamilyMember)
-                serverAllowsInvitations = remote.canInvite ?: (environment.session.user?.role == "CHILD")
+                members = otherMembers(remote.members, userId)
+                serverAllowsInvitations = remote.canInvite ?: true
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -125,12 +141,58 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
         }
     }
 
+    fun remove(member: ManagedFamilyMember) {
+        if (isGuest) {
+            members = members - member
+            Haptics.commit()
+            return
+        }
+        val familyId = environment.session.familyId ?: return
+        isRemoving = true
+        errorText = null
+        scope.launch {
+            try {
+                environment.api.removeFamilyMember(familyId, member.id)
+                Haptics.commit()
+                load()
+                environment.family.refresh(environment)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                errorText = error.message
+            } finally {
+                isRemoving = false
+            }
+        }
+    }
+
+    fun resend(member: ManagedFamilyMember) {
+        val invitation = member.invitation ?: return
+        if (isGuest) {
+            noticeText = "체험 모드에서는 초대를 보내지 않아요."
+            return
+        }
+        selectedInvitation = invitation
+    }
+
+    fun editProfile(member: ManagedFamilyMember) {
+        val target = member.profileTarget ?: return
+        if (onClose == null) navigator.push(SettingsRoute.HealthProfile(target)) else sheetProfile = target
+    }
+
     LaunchedEffect(Unit) { load() }
+
+    val profile = sheetProfile
+    if (profile != null) {
+        BackHandler { sheetProfile = null }
+        HealthProfileSettingsScreen(profile, onBack = { sheetProfile = null }, inSheet = true)
+        return
+    }
 
     Column(
         Modifier
             .fillMaxSize()
-            .background(CollogColors.gray50)
+            .background(CollogColors.gray00)
             .then(if (onClose == null) Modifier.statusBarsPadding() else Modifier),
     ) {
         SettingsDetailHeader("가족 구성원 관리", onBack = onClose ?: { navigator.pop() })
@@ -140,8 +202,9 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.x5, vertical = Spacing.x4),
-            verticalArrangement = Arrangement.spacedBy(Spacing.x5),
+                .padding(horizontal = Spacing.x5)
+                .padding(top = Spacing.x5, bottom = Spacing.x8),
+            verticalArrangement = Arrangement.spacedBy(28.dp),
         ) {
             if (families.size > 1) {
                 FamilyPicker(
@@ -152,60 +215,60 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
                 )
             }
 
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                Text("함께 연결된 가족", style = CollogType.subtitle01, color = CollogColors.gray900)
-                Spacer(Modifier.weight(1f))
-                Text("${members.size}명", style = CollogType.body03Medium, color = CollogColors.gray700)
-            }
-
             if (isLoading) {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
-                    repeat(2) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(72.dp)
-                                .background(CollogColors.gray100, RoundedCornerShape(Radius.card)),
-                        )
-                    }
+                repeat(2) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(104.dp)
+                            .background(CollogColors.gray200, RoundedCornerShape(12.dp)),
+                    )
+                }
+            } else if (members.isEmpty() && errorText == null) {
+                SettingsCallout {
+                    SettingsCalloutText("아직 함께하는 가족이 없어요. 가족을 초대하거나 받은 초대 코드를 입력해 보세요.")
                 }
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
-                    members.forEach { member ->
-                        MemberRow(member, canInvite = canInvite, onShowInvitation = { selectedInvitation = it })
-                    }
+                members.forEach { member ->
+                    MemberCard(member)
+                    MemberActions(
+                        member = member,
+                        enabled = !isRemoving,
+                        onEdit = { editProfile(member) },
+                        onResend = { resend(member) },
+                        onRemove = { removalCandidate = member },
+                    )
                 }
             }
 
             errorText?.let {
-                Text(it, style = CollogType.body03Medium, color = CollogColors.red500)
-                SystemTextButton("다시 시도") { scope.launch { load() } }
-            }
-
-            if (canInvite) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .background(CollogColors.gray00, RoundedCornerShape(Radius.btnSmall))
-                        .border(1.dp, CollogColors.green200, RoundedCornerShape(Radius.btnSmall))
-                        .pressable { showsInvitation = true },
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.x2, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CollogIcon("plus", size = 16.dp, color = CollogColors.greenDark)
-                    Text("가족 초대하기", style = CollogType.body02Semibold, color = CollogColors.greenDark)
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
+                    Text(it, style = CollogType.body03Medium, color = CollogColors.red500)
+                    SystemTextButton("다시 시도") { scope.launch { load() } }
                 }
             }
-            if (!isGuest && role == "PARENT") {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 52.dp)
-                        .pressable { showsInvitationCode = true },
-                    contentAlignment = Alignment.Center,
+            noticeText?.let { Text(it, style = CollogType.body03Medium, color = CollogColors.gray700) }
+
+            // 체험 모드는 버튼만 보이고 누르면 안내한다
+            val showsInvite = canInvite || isGuest
+            if (showsInvite || canEnterCode) {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = Spacing.x3),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
                 ) {
-                    Text("초대 코드 입력", style = CollogType.body02Semibold, color = CollogColors.greenDark)
+                    if (canEnterCode) {
+                        SettingsActionButton(
+                            "초대 코드 입력",
+                            Modifier.weight(1f),
+                            background = CollogColors.gray200,
+                            foreground = CollogColors.gray900,
+                        ) { showsInvitationCode = true }
+                    }
+                    if (showsInvite) {
+                        SettingsActionButton("가족 초대하기", Modifier.weight(1f)) {
+                            if (isGuest) noticeText = "체험 모드에서는 초대를 보내지 않아요." else showsInvitation = true
+                        }
+                    }
                 }
             }
         }
@@ -230,38 +293,75 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
             onUpdated = { scope.launch { load() } },
         )
     }
+    removalCandidate?.let { member ->
+        SettingsAlert(
+            title = if (member.isConnected) "${member.name}님을 가족에서 삭제할까요?" else "${member.name}님에게 보낸 초대를 삭제할까요?",
+            message = if (member.isConnected) {
+                "서로 전화하거나 기록을 볼 수 없게 돼요. 다시 함께하려면 새로 초대해야 해요."
+            } else {
+                "보낸 초대 코드는 더 이상 쓸 수 없어요."
+            },
+            confirmText = "삭제",
+            destructive = true,
+            onConfirm = { remove(member) },
+            onDismiss = { removalCandidate = null },
+        )
+    }
 }
 
+/** 피그마 구성원 카드(277:6110). 둘째 줄 「드링클리 본점」은 자리 글자라 닉네임이 있을 때만 쓴다. */
 @Composable
-private fun MemberRow(member: ManagedFamilyMember, canInvite: Boolean, onShowInvitation: (FamilyInvitation) -> Unit) {
-    val shape = RoundedCornerShape(Radius.card)
+private fun MemberCard(member: ManagedFamilyMember) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(72.dp)
-            .background(CollogColors.gray00, shape)
-            .border(1.dp, CollogColors.gray200, shape)
-            .padding(horizontal = Spacing.x4),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.x4),
+            .background(CollogColors.gray200, RoundedCornerShape(12.dp))
+            .padding(15.dp),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.x1)) {
-            Text(member.name, style = CollogType.body01Semibold, color = CollogColors.gray900)
-            Text(member.relationTitle, style = CollogType.caption01Medium, color = CollogColors.gray700)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
+            MemberTitle(member.title)
+            val nickname = member.nickname
+            if (nickname != null) {
+                Text(nickname, style = singleLine(Pretendard.Medium, 14f), color = CollogColors.gray700)
+            } else {
+                Spacer(Modifier.height(17.dp))
+            }
+            Text(member.statusText() ?: "", style = singleLine(Pretendard.Regular, 14f), color = SettingsMutedColor)
         }
-        Text(
-            member.statusText,
-            style = CollogType.caption01Semibold,
-            color = if (member.isConnected) CollogColors.greenDark else CollogColors.gray700,
-        )
-        val invitation = member.invitation
-        if (canInvite && invitation != null && !member.isConnected) {
-            Text(
-                "초대 보기",
-                style = CollogType.body03Medium,
-                color = CollogColors.greenDark,
-                modifier = Modifier.pressable { onShowInvitation(invitation) },
+        if (member.consentGranted) SettingsLink("동의됨")
+    }
+}
+
+/** 피그마 Block Btn(277:6192): 연결된 구성원은 「질환 프로필 편집」, 대기 중 초대는 「초대 재발송」, 지울 수 있으면 「구성원 삭제」. */
+@Composable
+private fun MemberActions(
+    member: ManagedFamilyMember,
+    enabled: Boolean,
+    onEdit: () -> Unit,
+    onResend: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val leading = when {
+        member.isConnected -> "질환 프로필 편집" to onEdit
+        member.invitation != null -> "초대 재발송" to onResend
+        else -> null
+    }
+    if (leading == null && !member.canRemove) return
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.x2)) {
+        if (leading != null) {
+            SettingsActionButton(
+                leading.first,
+                Modifier.weight(1f),
+                background = CollogColors.gray200,
+                foreground = CollogColors.gray900,
+                enabled = enabled,
+                onClick = leading.second,
             )
+        }
+        if (member.canRemove) {
+            SettingsActionButton("구성원 삭제", Modifier.weight(1f), background = CollogColors.red500, enabled = enabled, onClick = onRemove)
         }
     }
 }
