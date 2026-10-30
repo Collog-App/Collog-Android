@@ -22,7 +22,6 @@ import java.math.RoundingMode
 import kotlin.math.abs
 import live.collog.app.features.home.models.FamilyHealthSummary
 import live.collog.app.features.home.views.components.HomeDetailHeader
-import live.collog.app.features.home.views.components.roundedInt
 import live.collog.app.features.report.views.components.ConversationCard
 import live.collog.app.shared.components.chart.TrendChart
 import live.collog.app.shared.components.chart.TrendPoint
@@ -158,6 +157,9 @@ private fun InsightCard(trend: TrendSeries?) {
         Text(interpretation(trend), style = CollogType.body03Medium, color = CollogColors.gray800)
     }
 }
+
+/** Swift `Int(value.rounded())`: .5는 0에서 먼 쪽으로 올린다. */
+internal fun roundedInt(value: Double): Int = BigDecimal(value).setScale(0, RoundingMode.HALF_UP).toInt()
 
 private fun formattedValue(point: TrendPoint?, trend: TrendSeries): String =
     if (point == null) "-" else "${roundedInt(point.value)}${trend.unit}"

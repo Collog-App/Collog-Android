@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,7 +17,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,14 +31,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import live.collog.app.features.call.models.CallDurationFormatter
 import live.collog.app.features.call.models.CallPhase
-import live.collog.app.shared.components.HealthCrossBadge
+import live.collog.app.shared.components.HealthQuestionCard
 import live.collog.app.shared.ui.pressable
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogIcon
@@ -48,6 +44,7 @@ import live.collog.app.shared.ui.designsystem.CollogType
 import live.collog.app.shared.ui.designsystem.Pretendard
 import live.collog.app.shared.ui.designsystem.Spacing
 import live.collog.app.shared.ui.designsystem.pretendard
+import live.collog.app.shared.ui.designsystem.singleLine
 
 /** 피그마 「최종본」 통화 화면(269:5141 연결 중, 269:5187 통화 중). 상태·타이머, 오늘의 건강 질문, 음소거·스피커, 종료/수신 버튼. */
 @Composable
@@ -130,10 +127,6 @@ fun CallScreen(
         }
     }
 }
-
-/** 피그마 글자는 줄 높이가 글자 크기의 약 1.19배라 한 줄 글자에만 맞춘다. */
-private fun singleLine(weight: Pretendard, size: Float): TextStyle =
-    pretendard(weight, size).copy(lineHeight = (size * 1.19f).sp)
 
 @Composable
 private fun AudioControls(
@@ -220,25 +213,7 @@ private fun QuestionList(questions: List<String>, modifier: Modifier = Modifier)
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.x5)) {
-            questions.forEach { question ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 50.dp)
-                        .background(CollogColors.gray100, RoundedCornerShape(10.dp))
-                        .padding(horizontal = Spacing.x5, vertical = 13.dp),
-                    horizontalArrangement = Arrangement.spacedBy(15.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    HealthCrossBadge()
-                    Text(
-                        question,
-                        style = pretendard(Pretendard.Medium, 15f),
-                        color = Color.Black,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
+            questions.forEach { HealthQuestionCard(it) }
         }
     }
 }

@@ -260,7 +260,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawChart(
 }
 
 /** Catmull-Rom 곡선을 3차 베지어로 바꿔 점들을 잇는다. */
-private fun smoothPath(points: List<Offset>): Path {
+internal fun smoothPath(points: List<Offset>): Path {
     val path = Path()
     path.moveTo(points.first().x, points.first().y)
     for (i in 0 until points.size - 1) {

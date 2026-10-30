@@ -287,7 +287,7 @@ private fun MainTabs(
             Crossfade(tab to environment.reportNotificationRevision, animationSpec = tween(180), label = "tab") { (shown, _) ->
                 CompositionLocalProvider(LocalNavigationManager provides navigation.manager(shown)) {
                     when (shown) {
-                        MainTab.Home -> HomeScreen()
+                        MainTab.Home -> HomeScreen(onStartCall)
                         MainTab.Report -> ReportTimelineScreen(initialTabIndex = 0)
                         MainTab.Timeline -> ReportTimelineScreen(initialTabIndex = 1)
                         MainTab.Settings -> SettingsScreen()

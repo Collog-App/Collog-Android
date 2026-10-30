@@ -44,10 +44,6 @@ class FamilyStore {
         refreshGeneration = UUID.randomUUID()
     }
 
-    fun saveQuestions(texts: List<String>, contact: FamilyContact) {
-        generatedQuestions = generatedQuestions + (contact.id to texts.map { PreviewQuestion(it) })
-    }
-
     suspend fun refresh(environment: AppEnvironment) {
         val generation = UUID.randomUUID()
         refreshGeneration = generation

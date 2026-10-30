@@ -7,8 +7,10 @@ import live.collog.app.TestEnvironment
 import live.collog.app.features.home.models.FamilyHealthSummary
 import live.collog.app.features.home.models.HealthFeedback
 import live.collog.app.features.home.models.fromDto
-import live.collog.app.features.home.services.QuestionGenerator
 import live.collog.app.features.home.viewmodels.HomeViewModel
+import live.collog.app.features.home.views.callDateText
+import live.collog.app.features.home.views.callDurationText
+import live.collog.app.features.home.views.callTimeText
 import live.collog.app.features.home.views.changeRate
 import live.collog.app.features.home.views.fixed1
 import live.collog.app.features.home.views.formatNotificationTime
@@ -19,7 +21,6 @@ import live.collog.app.shared.components.chart.from
 import live.collog.app.shared.services.api.AcousticTrendDto
 import live.collog.app.shared.services.api.AcousticTrendPointDto
 import live.collog.app.shared.services.api.BaselineDto
-import live.collog.app.shared.services.api.CallSummaryDto
 import live.collog.app.shared.services.api.RepeatObservationDto
 import live.collog.app.shared.services.api.ReportDto
 import org.junit.Assert.assertEquals
@@ -96,7 +97,7 @@ class HomeSummaryTests {
             assertEquals(1, model.healthFeedback?.followUps?.size)
             assertNull(model.loadError)
             assertTrue(model.isLoaded)
-            assertEquals("아직 통화 기록이 없어요", model.lastCallText)
+            assertTrue(model.lastCallAt.isEmpty())
         } finally {
             fixture.cleanUp()
         }
@@ -132,7 +133,10 @@ class HomeSummaryTests {
             model.refresh(fixture.environment, contact = null)
             assertEquals(FamilyHealthSummary.sample, model.healthSummary)
             assertEquals(HealthFeedback.sample, model.healthFeedback)
-            assertEquals("최근 통화했어요", model.lastCallText)
+            // FamilyContact.samples의 「3일 전 통화」·「그저께 통화」와 같다
+            assertEquals("3일 전", HomeViewModel.lastCallDayText(model.lastCallAt["sample-mother"]))
+            assertEquals("그저께", HomeViewModel.lastCallDayText(model.lastCallAt["sample-father"]))
+            assertTrue(model.recentCalls.isEmpty())
             assertTrue(fixture.paths.isEmpty())
         } finally {
             fixture.cleanUp()
@@ -140,31 +144,87 @@ class HomeSummaryTests {
     }
 
     @Test
-    fun lastCallTextCountsCalendarDays() {
+    fun lastCallDayCountsCalendarDays() {
         val zone = ZoneId.of("Asia/Seoul")
         val now = Instant.parse("2026-10-24T05:00:00Z") // 서울 14시
-        fun call(at: String) = CallSummaryDto(
-            callId = at, parentId = "me", state = "ANALYZED", startedAt = Instant.parse(at), recorded = true,
-        )
-        fun text(vararg at: String) = HomeViewModel.lastCallText(at.map(::call), now, zone)
+        fun text(at: String?) = HomeViewModel.lastCallDayText(at?.let(Instant::parse), now, zone)
 
-        assertEquals("아직 통화 기록이 없어요", text())
-        assertEquals("오늘 통화했어요", text("2026-10-23T15:30:00Z")) // 서울 10-24 00:30
-        assertEquals("어제 통화했어요", text("2026-10-23T14:30:00Z")) // 서울 10-23 23:30
-        assertEquals("그저께 통화했어요", text("2026-10-22T03:00:00Z"))
-        assertEquals("5일 전에 통화했어요", text("2026-10-19T03:00:00Z"))
-        assertEquals("오늘 통화했어요", text("2026-10-25T03:00:00Z")) // 미래도 오늘
-        assertEquals("어제 통화했어요", text("2026-10-01T03:00:00Z", "2026-10-23T03:00:00Z")) // 가장 최근 통화 기준
+        assertEquals("기록 없음", text(null))
+        assertEquals("오늘", text("2026-10-23T15:30:00Z")) // 서울 10-24 00:30
+        assertEquals("어제", text("2026-10-23T14:30:00Z")) // 서울 10-23 23:30
+        assertEquals("그저께", text("2026-10-22T03:00:00Z"))
+        assertEquals("5일 전", text("2026-10-19T03:00:00Z"))
+        assertEquals("오늘", text("2026-10-25T03:00:00Z")) // 미래도 오늘
     }
 
     @Test
-    fun fallbackQuestionsAreThreeFreshOnes() {
-        val first = QuestionGenerator.fallback(emptyList())
-        assertEquals(3, first.size)
-        assertEquals(3, first.toSet().size)
-        val second = QuestionGenerator.fallback(first)
-        assertEquals(3, second.size)
-        assertTrue(second.none { it in first })
+    fun childLoadsLatestCallForEachParent() = runTest {
+        val fixture = TestEnvironment(role = "CHILD")
+        try {
+            fixture.respond = { request ->
+                val path = request.url.encodedPath
+                when {
+                    path.endsWith("/members") -> 200 to """{"members":[
+                        {"memberId":"m1","userId":"mom","name":"엄마","relation":"MOTHER","status":"ACTIVE","role":"PARENT"},
+                        {"memberId":"m2","userId":"dad","name":"아빠","relation":"FATHER","status":"ACTIVE","role":"PARENT"}]}"""
+                    path.endsWith("/daily-questions") -> 200 to """{"questions":[]}"""
+                    path == "/v1/parents/mom/calls" -> 200 to """{"calls":[
+                        {"callId":"c1","parentId":"mom","state":"ANALYZED","startedAt":"2026-10-01T03:00:00Z","recorded":true},
+                        {"callId":"c2","parentId":"mom","state":"ENDED","startedAt":"2026-10-23T03:00:00Z","recorded":true}]}"""
+                    path == "/v1/parents/dad/calls" -> 500 to """{"code":"SERVER","message":"서버 오류"}"""
+                    path.endsWith("/baseline") -> 200 to """{"baselines":[]}"""
+                    else -> 500 to """{"code":"SERVER","message":"서버 오류"}"""
+                }
+            }
+            fixture.environment.family.refresh(fixture.environment)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, fixture.environment.family.selectedContact)
+            // 고른 엄마의 기록은 한 번만 받고, 아빠 기록을 못 받으면 아빠는 빠진다
+            assertEquals(1, fixture.paths.count { it == "/v1/parents/mom/calls" })
+            assertEquals(mapOf("m1" to Instant.parse("2026-10-23T03:00:00Z")), model.lastCallAt)
+            assertEquals(2, model.recentCalls.size)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun parentUsesOwnCallsForEveryContact() = runTest {
+        val fixture = TestEnvironment(role = "PARENT")
+        try {
+            fixture.respond = { request ->
+                val path = request.url.encodedPath
+                when {
+                    path.endsWith("/members") -> 200 to """{"members":[
+                        {"memberId":"k1","userId":"son","name":"아들","relation":"SON","status":"ACTIVE","role":"CHILD"},
+                        {"memberId":"k2","userId":"daughter","name":"딸","relation":"DAUGHTER","status":"ACTIVE","role":"CHILD"}]}"""
+                    path.endsWith("/daily-questions") -> 200 to """{"questions":[]}"""
+                    path == "/v1/parents/me/calls" -> 200 to """{"calls":[
+                        {"callId":"c1","parentId":"me","state":"ANALYZED","startedAt":"2026-10-20T03:00:00Z","recorded":true}]}"""
+                    path.endsWith("/baseline") -> 200 to """{"baselines":[]}"""
+                    else -> 500 to """{"code":"SERVER","message":"서버 오류"}"""
+                }
+            }
+            fixture.environment.family.refresh(fixture.environment)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, fixture.environment.family.selectedContact)
+            val at = Instant.parse("2026-10-20T03:00:00Z")
+            assertEquals(mapOf("k1" to at, "k2" to at), model.lastCallAt)
+            assertEquals(1, fixture.paths.count { it.endsWith("/calls") })
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun callLogTextUsesKoreanDateAndDuration() {
+        val seoul = ZoneId.of("Asia/Seoul")
+        val at = Instant.parse("2026-10-27T06:12:00Z") // 서울 10-27 15:12
+        assertEquals("10월 27일 화요일", callDateText(at, seoul))
+        assertEquals("오후 3:12", callTimeText(at, seoul))
+        assertEquals("12분 4초", callDurationText(724))
+        assertEquals("1분 0초", callDurationText(60))
+        assertEquals("45초", callDurationText(45))
     }
 
     @Test

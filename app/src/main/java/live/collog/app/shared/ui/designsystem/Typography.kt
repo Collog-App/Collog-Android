@@ -48,6 +48,10 @@ fun pretendard(weight: Pretendard, size: Float, color: Color = Color.Unspecified
         color = color,
     )
 
+/** 피그마 「최종본」 글자는 줄 높이가 글자 크기의 약 1.19배라 한 줄 글자에만 맞춘다. */
+fun singleLine(weight: Pretendard, size: Float): TextStyle =
+    pretendard(weight, size).copy(lineHeight = (size * 1.19f).sp)
+
 /** `pretendardStyle(weight, size)`: 입력창처럼 줄 간격을 더하지 않는 곳에 쓴다. */
 fun pretendardPlain(weight: Pretendard, size: Float, color: Color = CollogColors.gray900): TextStyle =
     TextStyle(
