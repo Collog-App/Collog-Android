@@ -309,7 +309,10 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
     }
 }
 
-/** 피그마 구성원 카드(277:6110). 둘째 줄 「드링클리 본점」은 자리 글자라 닉네임이 있을 때만 쓴다. */
+/**
+ * 피그마 구성원 카드(277:6110). 둘째 줄 「드링클리 본점」은 자리 글자라 닉네임이 있을 때만 쓴다.
+ * 가족을 만든 사람은 서버가 이름 자리에 닉네임을 주므로, 제목과 같으면 둘째 줄을 비운다.
+ */
 @Composable
 private fun MemberCard(member: ManagedFamilyMember) {
     Row(
@@ -322,7 +325,7 @@ private fun MemberCard(member: ManagedFamilyMember) {
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
             MemberTitle(member.title)
-            val nickname = member.nickname
+            val nickname = member.nickname?.takeIf { it != member.name }
             if (nickname != null) {
                 Text(nickname, style = singleLine(Pretendard.Medium, 14f), color = CollogColors.gray700)
             } else {
