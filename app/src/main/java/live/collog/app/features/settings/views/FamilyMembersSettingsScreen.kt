@@ -101,8 +101,10 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
                 if (environment.session.user?.id != userId) return
                 families = available
                 val first = available.firstOrNull()
-                if (available.none { it.id == environment.session.familyId } && first != null) {
-                    environment.session.joinFamily(first.id)
+                val current = environment.session.familyId
+                // 구성원에서 삭제되어 지금 가족이 목록에 없으면 남은 가족으로 옮기거나 가족 없음으로 되돌린다
+                if (available.none { it.id == current } && (first != null || current != null)) {
+                    if (first != null) environment.session.joinFamily(first.id) else environment.session.leaveFamily()
                     environment.family.reset()
                     environment.family.refresh(environment)
                 }

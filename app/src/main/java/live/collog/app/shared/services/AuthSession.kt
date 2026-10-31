@@ -84,7 +84,12 @@ class AuthSession(
         onAccountChanged?.invoke()
     }
 
-    fun joinFamily(familyId: String) {
+    fun joinFamily(familyId: String) = setFamily(familyId)
+
+    /** 구성원에서 삭제되어 속한 가족이 없어졌을 때 가족 없음으로 되돌린다. */
+    fun leaveFamily() = setFamily(null)
+
+    private fun setFamily(familyId: String?) {
         val accessToken = accessToken ?: throw ApiError.Unauthenticated
         val refreshToken = refreshToken ?: throw ApiError.Unauthenticated
         val user = user ?: throw ApiError.Unauthenticated

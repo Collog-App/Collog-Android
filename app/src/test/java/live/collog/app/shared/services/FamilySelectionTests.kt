@@ -4,6 +4,7 @@ import kotlinx.coroutines.test.runTest
 import live.collog.app.TestEnvironment
 import okhttp3.Request
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -105,5 +106,40 @@ class FamilySelectionTests {
         val restored = AuthSession(credentialStore = fixture.credentials, http = fixture.http)
         assertEquals("chosen-family", restored.familyId)
         assertEquals("new-token", restored.accessToken)
+    }
+
+    /** 가족을 만든 사람이 나를 구성원에서 삭제하면 서버가 그 가족을 403 으로 막는다. */
+    private fun respondAsRemovedMember(fixture: TestEnvironment, remaining: String) {
+        fixture.respond = { request: Request ->
+            val path = request.url.encodedPath
+            when {
+                path == "/v1/families/family/members" -> 403 to """{"code":"FORBIDDEN","message":"가족 접근 권한이 없습니다"}"""
+                path == "/v1/families" -> 200 to """{"families":[$remaining]}"""
+                path.endsWith("/members") -> 200 to members(listOf("mom"))
+                else -> 200 to """{"source":"fixture","questions":[]}"""
+            }
+        }
+    }
+
+    @Test
+    fun removedMemberWithNoOtherFamilyFallsBackToNoFamily() = withFixture { fixture ->
+        respondAsRemovedMember(fixture, remaining = "")
+        val store = fixture.environment.family
+        store.refresh(fixture.environment)
+        assertNull(fixture.environment.session.familyId)
+        assertNull(fixture.credentials.response?.user?.familyId)
+        assertEquals(emptyList<String>(), store.contacts.map { it.id })
+        assertNull(store.loadError)
+        assertTrue(fixture.environment.session.isAuthenticated)
+    }
+
+    @Test
+    fun removedMemberMovesToTheFamilyTheyStillBelongTo() = withFixture { fixture ->
+        respondAsRemovedMember(fixture, remaining = """{"familyId":"other","name":"다른 가족"}""")
+        val store = fixture.environment.family
+        store.refresh(fixture.environment)
+        assertEquals("other", fixture.environment.session.familyId)
+        assertEquals(listOf("mom"), store.contacts.map { it.id })
+        assertNull(store.loadError)
     }
 }
