@@ -68,11 +68,13 @@ fun FamilyInvitationSheet(onDismiss: () -> Unit, onCreated: () -> Unit) {
     val canCreate = name.isNotEmpty() && !isSubmitting
 
     // 새로 만든 가족은 시트를 닫을 때 세션에 넣는다. 넣는 순간 앱이 홈으로 돌아가 코드를 보여 줄 수 없다.
+    // 홈에서 띄운 구성원 시트는 그대로 남으므로, 넣은 뒤 대기 중 초대가 보이게 다시 불러온다.
     fun close() {
         val familyId = createdFamilyId
         onDismiss()
         if (familyId != null && environment.session.familyId == null) {
             runCatching { environment.session.joinFamily(familyId) }
+            onCreated()
         }
     }
 
