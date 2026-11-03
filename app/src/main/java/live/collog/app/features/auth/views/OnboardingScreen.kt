@@ -6,6 +6,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -187,7 +189,10 @@ private fun PageContent(page: OnboardingPage) {
     }
 }
 
-/** 카카오 버튼 자리(350x50 알약)의 Google 로그인. Google 버튼은 예전 로그인 화면처럼 검은 바탕에 흰 글자. */
+/**
+ * 카카오 버튼 자리(350x50 알약)의 Google 로그인. Google 브랜드 지침의 어두운 테마(바탕·테두리·글자 색)와
+ * 공식 G 로고(지침 묶음의 어두운 테마 PNG 에서 G 부분만 잘라 냄)를 쓴다. 글꼴은 한글이 없는 Google Sans 대신 앱 글꼴.
+ */
 @Composable
 private fun SignInActions(
     viewModel: LoginViewModel,
@@ -202,11 +207,17 @@ private fun SignInActions(
             Modifier
                 .fillMaxWidth()
                 .height(50.dp)
-                .background(if (enabled) Color.Black else CollogColors.gray500, CircleShape)
+                // 로고 PNG 의 바탕이 지침 색이라 비활성일 때도 바탕은 두고 전체를 흐리게 한다
+                .alpha(if (enabled) 1f else 0.38f)
+                .background(GoogleButtonFill, CircleShape)
+                .border(1.dp, GoogleButtonStroke, CircleShape)
                 .pressable(enabled = enabled, onClick = onGoogle),
             contentAlignment = Alignment.Center,
         ) {
-            Text("Google로 계속하기", style = pretendard(Pretendard.SemiBold, 16f), color = CollogColors.gray00)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Image(painterResource(R.drawable.ic_google_g), contentDescription = null, modifier = Modifier.size(20.dp))
+                Text("Google로 계속하기", style = pretendard(Pretendard.SemiBold, 16f), color = GoogleButtonText)
+            }
         }
 
         (viewModel.errorMessage ?: storageError)?.let {
@@ -222,6 +233,11 @@ private fun SignInActions(
         }
     }
 }
+
+// Google 브랜드 지침 어두운 테마: https://developers.google.com/identity/branding-guidelines
+private val GoogleButtonFill = Color(0xFF131314)
+private val GoogleButtonStroke = Color(0xFF8E918F)
+private val GoogleButtonText = Color(0xFFE3E3E3)
 
 @Composable
 private fun TextAction(text: String, color: Color, onClick: () -> Unit, enabled: Boolean = true) {
