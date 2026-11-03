@@ -53,6 +53,7 @@ class FakeCallPlatform : CallPlatform {
     var incomingCancelled = 0
     var ongoing = mutableListOf<String>()
     var stoppedOngoing = 0
+    var uploadWorkScheduled = 0
 
     override suspend fun requestMicrophone(): Boolean = microphoneGranted
     override suspend fun requestMicrophoneIfUndetermined(): Boolean = microphoneGranted
@@ -75,6 +76,9 @@ class FakeCallPlatform : CallPlatform {
     }
     override fun stopOngoing() {
         stoppedOngoing += 1
+    }
+    override fun scheduleUploadWork() {
+        uploadWorkScheduled += 1
     }
 
     fun cleanUp() {

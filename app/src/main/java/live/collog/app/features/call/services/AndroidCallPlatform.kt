@@ -124,6 +124,10 @@ class AndroidCallPlatform(
         CallService.stop(context)
     }
 
+    override fun scheduleUploadWork() {
+        RawAudioUploadWorker.schedule(context)
+    }
+
     private companion object {
         const val KEY_NOTIFICATIONS_ASKED = "notificationsAsked"
         const val KEY_MICROPHONE_ASKED = "microphoneAsked"

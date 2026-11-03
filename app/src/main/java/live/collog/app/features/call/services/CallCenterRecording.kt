@@ -31,8 +31,18 @@ internal fun CallCenter.makeUploadQueue(): RawAudioUploadQueue? = try {
 fun CallCenter.resumePendingUploads() {
     uploads?.discardInvalidOwners()
     val uploads = uploads ?: return
-    if (!uploads.hasPending || uploadJob?.isActive == true) return
+    if (!uploads.hasPending) return
+    // 앱 안에서 바로 올리고, 앱이 뒤로 가거나 꺼지면 예약 작업이 이어 간다
+    platform.scheduleUploadWork()
+    if (uploadJob?.isActive == true) return
     uploadJob = scope.launch { uploads.resume() }
+}
+
+/** [RawAudioUploadWorker]가 부른다. 대기열을 한 번 끝까지 돌리고, 아직 남았으면 true(다시 시도). */
+internal suspend fun CallCenter.drainPendingUploads(): Boolean {
+    resumePendingUploads()
+    uploadJob?.join()
+    return uploads?.hasPending == true
 }
 
 internal fun CallCenter.attachAnalysisWriter(publication: LocalTrackPublication?) {

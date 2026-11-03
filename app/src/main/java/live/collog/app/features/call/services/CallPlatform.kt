@@ -42,4 +42,7 @@ interface CallPlatform {
     fun cancelIncoming()
     fun startOngoing(peerName: String)
     fun stopOngoing()
+
+    /** 앱이 뒤로 가거나 꺼져도 남은 원음 업로드를 끝까지 이어 가도록 예약한다. 이미 예약돼 있으면 그대로 둔다. */
+    fun scheduleUploadWork()
 }
