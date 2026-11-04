@@ -6,6 +6,7 @@ import kotlinx.coroutines.MainScope
 import live.collog.app.config.AppEnvironment
 import live.collog.app.config.AppSettings
 import live.collog.app.features.auth.services.GoogleSignIn
+import live.collog.app.features.auth.services.KakaoSignIn
 import live.collog.app.features.call.services.AndroidCallPlatform
 import live.collog.app.features.call.services.CallCenter
 import live.collog.app.shared.services.AuthSession
@@ -30,7 +31,11 @@ class CollogApplication : Application() {
             settings = AppSettings(getSharedPreferences("collog.settings", Context.MODE_PRIVATE)),
             session = AuthSession(CredentialStore(this)),
         )
-        environment.afterSignOut = { GoogleSignIn.clear(this) }
+        KakaoSignIn.init(this)
+        environment.afterSignOut = {
+            GoogleSignIn.clear(this)
+            KakaoSignIn.clear()
+        }
         permissions = PermissionRequester(this)
         val scope = MainScope()
         callCenter = CallCenter(

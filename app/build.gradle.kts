@@ -22,6 +22,10 @@ android {
 
         buildConfigField("String", "API_BASE_URL", "\"https://api.collog.live\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${providers.gradleProperty("collog.googleWebClientId").getOrElse("")}\"")
+        // 카카오 네이티브 앱 키. 비우면 카카오 로그인 버튼이 숨는다(비밀 아님, 앱에 들어간다).
+        val kakaoNativeAppKey = providers.gradleProperty("collog.kakaoNativeAppKey").getOrElse("")
+        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoNativeAppKey\"")
+        manifestPlaceholders["kakaoScheme"] = "kakao$kakaoNativeAppKey"
     }
 
     buildTypes {
@@ -75,6 +79,7 @@ dependencies {
     implementation(libs.livekit.android)
     implementation(libs.androidx.core.telecom)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.kakao.user)
     // 의존성이 끌어오는 옛 fragment(<1.3) 대신: registerForActivityResult 요구 사항
     implementation(libs.androidx.fragment)
     implementation(platform(libs.firebase.bom))

@@ -15,6 +15,10 @@ dependencyResolutionManagement {
         maven("https://jitpack.io") {
             content { includeGroup("com.github.davidliu") }
         }
+        // 카카오 SDK 는 카카오 저장소에서만 받는다.
+        maven("https://devrepo.kakao.com/nexus/content/groups/public/") {
+            content { includeGroup("com.kakao.sdk") }
+        }
     }
 }
 

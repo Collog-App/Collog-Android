@@ -9,6 +9,7 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import live.collog.app.config.AppEnvironment
 import live.collog.app.features.auth.services.GoogleSignIn
+import live.collog.app.features.auth.services.KakaoSignIn
 import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.LoginChallenge
 
@@ -90,6 +91,29 @@ class LoginViewModel {
             clearRequest()
             prepareChallenge(environment, clearError = false)
             return false
+        }
+    }
+
+    /**
+     * 카카오 로그인. 서버 nonce 는 누를 때 받는다(Google 처럼 미리 받아 둘 필요가 없다).
+     * 로그인에 성공하면 true. 취소하면 오류 없이 false.
+     */
+    suspend fun signInWithKakao(activityContext: Context, environment: AppEnvironment): Boolean {
+        if (isSubmitting) return false
+        errorMessage = null
+        isSubmitting = true
+        try {
+            val challenge = environment.api.kakaoLoginChallenge()
+            val idToken = KakaoSignIn.requestIdToken(activityContext, challenge.nonce)
+            environment.session.apply(environment.api.loginWithKakao(idToken, challenge.challengeId))
+            return true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            if (error !is KakaoSignIn.Cancelled) errorMessage = error.message
+            return false
+        } finally {
+            isSubmitting = false
         }
     }
 

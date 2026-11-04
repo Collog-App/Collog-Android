@@ -47,6 +47,13 @@ data class GoogleLoginBody(
     val name: String? = null,
 )
 
+/** 이름은 보내지 않는다. 서버가 ID 토큰의 카카오 닉네임을 기본 이름으로 쓴다. */
+@Serializable
+data class KakaoLoginBody(
+    val idToken: String,
+    val challengeId: String,
+)
+
 @Serializable
 data class RefreshTokenBody(val refreshToken: String)
 

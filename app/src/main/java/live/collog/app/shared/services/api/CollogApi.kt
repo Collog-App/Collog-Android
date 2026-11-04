@@ -26,6 +26,26 @@ class CollogApi(val client: CollogApiClient) {
             ),
         )
 
+    suspend fun kakaoLoginChallenge(): LoginChallenge =
+        client.send(
+            ApiEndpoint(
+                path = "/v1/auth/kakao/challenge",
+                method = HttpMethod.POST,
+                requiresAuth = false,
+                timeoutSeconds = 10,
+            ),
+        )
+
+    suspend fun loginWithKakao(idToken: String, challengeId: String): TokenResponse =
+        client.send(
+            ApiEndpoint(
+                path = "/v1/auth/kakao",
+                method = HttpMethod.POST,
+                body = body(KakaoLoginBody(idToken = idToken, challengeId = challengeId)),
+                requiresAuth = false,
+            ),
+        )
+
     suspend fun requestOtp(phone: String, role: String, name: String) {
         client.sendRaw(
             ApiEndpoint(

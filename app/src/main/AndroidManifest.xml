@@ -45,6 +45,18 @@
             android:taskAffinity="live.collog.app.call"
             android:turnScreenOn="true" />
 
+        <!-- 카카오 계정 로그인(웹)에서 돌아오는 주소 kakao{네이티브 앱 키}://oauth -->
+        <activity
+            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:host="oauth" android:scheme="${kakaoScheme}" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".features.call.services.CallService"
             android:exported="false"

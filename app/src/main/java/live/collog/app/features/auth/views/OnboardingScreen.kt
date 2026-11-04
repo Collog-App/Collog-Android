@@ -24,6 +24,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,10 +39,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.delay
@@ -49,6 +53,7 @@ import kotlinx.coroutines.launch
 import live.collog.app.BuildConfig
 import live.collog.app.R
 import live.collog.app.config.LocalAppEnvironment
+import live.collog.app.features.auth.services.KakaoSignIn
 import live.collog.app.features.auth.viewmodels.LoginViewModel
 import live.collog.app.shared.ui.CollogProgress
 import live.collog.app.shared.ui.designsystem.CollogColors
@@ -138,6 +143,11 @@ fun OnboardingScreen(onSignedIn: () -> Unit) {
                 SignInActions(
                     viewModel = viewModel,
                     storageError = environment.session.storageError,
+                    onKakao = {
+                        scope.launch {
+                            if (viewModel.signInWithKakao(context, environment)) onSignedIn()
+                        }
+                    },
                     onGoogle = {
                         scope.launch {
                             if (viewModel.signIn(context, environment)) onSignedIn()
@@ -197,11 +207,13 @@ private fun PageContent(page: OnboardingPage) {
 private fun SignInActions(
     viewModel: LoginViewModel,
     storageError: String?,
+    onKakao: () -> Unit,
     onGoogle: () -> Unit,
     onRetry: () -> Unit,
     onGuest: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(bottom = Spacing.x5), verticalArrangement = Arrangement.spacedBy(Spacing.x4)) {
+        if (KakaoSignIn.isConfigured) KakaoButton(enabled = !viewModel.isSubmitting, onClick = onKakao)
         val enabled = viewModel.canSignIn
         Box(
             Modifier
@@ -233,6 +245,32 @@ private fun SignInActions(
         }
     }
 }
+
+/**
+ * 카카오 로그인 디자인 가이드(developers.kakao.com/docs/ko/kakaologin/design-guide)의 완성형 버튼:
+ * 바탕 #FEE500, 모서리 12, 공식 말풍선 기호, 글자 「카카오 로그인」은 검정 85%·기기 기본 글꼴.
+ * 피그마의 「카카오로 계속하기」는 가이드에 없는 문구라 쓰지 않는다.
+ */
+@Composable
+private fun KakaoButton(enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .alpha(if (enabled) 1f else 0.38f)
+            .background(KakaoContainer, RoundedCornerShape(12.dp))
+            .pressable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Image(painterResource(R.drawable.ic_kakao_symbol), contentDescription = null, modifier = Modifier.size(18.dp))
+            Text("카카오 로그인", style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold), color = KakaoLabel)
+        }
+    }
+}
+
+private val KakaoContainer = Color(0xFFFEE500)
+private val KakaoLabel = Color(0xD9000000)
 
 // Google 브랜드 지침 어두운 테마: https://developers.google.com/identity/branding-guidelines
 private val GoogleButtonFill = Color(0xFF131314)
