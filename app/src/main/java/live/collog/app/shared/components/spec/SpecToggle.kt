@@ -22,21 +22,27 @@ import androidx.compose.ui.unit.dp
 import live.collog.app.shared.ui.designsystem.SpecColors
 import live.collog.app.shared.ui.pressable
 
-/** 새 피그마 04 「토글(켜짐)」: 트랙 63x29(둥글기 12, `#63cf8a` + 1dp `#4fbf79`), 흰 노브 24. 꺼짐은 회색 트랙. */
+/** 새 피그마 04 「토글(켜짐)」(설정 15 는 트랙 `#00d37e`, [onColor]): 트랙 63x29(둥글기 12, `#63cf8a` + 1dp `#4fbf79`), 흰 노브 24. 꺼짐은 회색 트랙. */
 @Composable
-fun SpecToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+fun SpecToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    onColor: Color = SpecColors.chartGreen,
+    enabled: Boolean = true,
+) {
     val knobX by animateDpAsState(if (checked) 36.dp else 3.dp, label = "specToggleKnob")
     val shape = RoundedCornerShape(12.dp)
     Box(
         modifier
             .size(width = 63.dp, height = 29.dp)
-            .background(if (checked) SpecColors.chartGreen else SpecColors.rail, shape)
+            .background(if (checked) onColor else SpecColors.rail, shape)
             .border(1.dp, if (checked) Color(0xFF4FBF79) else SpecColors.line, shape)
             .semantics {
                 role = Role.Switch
                 toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
             }
-            .pressable { onCheckedChange(!checked) },
+            .pressable(enabled = enabled) { onCheckedChange(!checked) },
         contentAlignment = Alignment.CenterStart,
     ) {
         Box(Modifier.offset(x = knobX - 1.dp).size(24.dp).background(Color.White, CircleShape))

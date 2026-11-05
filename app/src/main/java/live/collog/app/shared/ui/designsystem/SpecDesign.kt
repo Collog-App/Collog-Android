@@ -44,15 +44,31 @@ object SpecColors {
     val rail = Color(0xFFE4E7EA)
     val node = Color(0xFF6B7078)
     val heroOrange = Color(0xFFFBF6EE)
+    /** 설정 화면 15~18 바탕. */
+    val page = Color(0xFFF9FAFB)
+    val toggleOn = Color(0xFF00D37E)
+    val destructive = Color(0xFFF0483E)
+    val chevron = Color(0xFFB4B9C0)
+    val greenBorder = Color(0xFF9ADDB4)
+    val greenOutline = Color(0xFFBFE8CF)
+    val greenSelected = Color(0xFFF2FAF5)
+    /** 10~12 전화 대상 선택 바탕. */
+    val launcherScrim = Color(0xFFF2F3F3).copy(alpha = 0.99f)
 }
 
 /** 새 피그마 글자: 줄 높이 글자 크기의 약 1.19배, 자간 0. */
 fun specText(weight: Pretendard, size: Float, color: Color = SpecColors.ink): TextStyle =
     pretendard(weight, size, color).copy(letterSpacing = 0.sp, lineHeight = (size * 1.19f).sp)
 
-/** 새 피그마 카드: 흰 바탕, 둥글기 18, 1dp 테두리, 아주 옅은 그림자(0,2,12 / 3%). */
-fun Modifier.specCard(padding: Dp = 15.dp, background: Color = Color.White, shadowed: Boolean = true): Modifier {
-    val shape = RoundedCornerShape(18.dp)
+/** 새 피그마 카드: 흰 바탕, 둥글기 18(설정 화면 15~18은 16·선택지 14, [radius]), 1dp 테두리, 아주 옅은 그림자(0,2,12 / 3%). */
+fun Modifier.specCard(
+    padding: Dp = 15.dp,
+    background: Color = Color.White,
+    shadowed: Boolean = true,
+    radius: Dp = 18.dp,
+    borderColor: Color = SpecColors.cardBorder,
+): Modifier {
+    val shape = RoundedCornerShape(radius)
     return fillMaxWidth()
         .then(
             if (shadowed) {
@@ -66,7 +82,7 @@ fun Modifier.specCard(padding: Dp = 15.dp, background: Color = Color.White, shad
             },
         )
         .background(background, shape)
-        .border(1.dp, SpecColors.cardBorder, shape)
+        .border(1.dp, borderColor, shape)
         .padding(padding)
 }
 

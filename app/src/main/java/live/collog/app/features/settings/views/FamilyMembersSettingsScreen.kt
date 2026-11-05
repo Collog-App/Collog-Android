@@ -39,15 +39,19 @@ import live.collog.app.features.settings.models.ProfileTarget
 import live.collog.app.features.settings.models.canEnterInvitationCode
 import live.collog.app.features.settings.models.canInviteFamily
 import live.collog.app.features.settings.models.otherMembers
-import live.collog.app.features.settings.views.components.MemberTitle
 import live.collog.app.features.settings.views.components.SettingsActionButton
 import live.collog.app.features.settings.views.components.SettingsAlert
-import live.collog.app.features.settings.views.components.SettingsCallout
-import live.collog.app.features.settings.views.components.SettingsCalloutText
-import live.collog.app.features.settings.views.components.SettingsDetailHeader
-import live.collog.app.features.settings.views.components.SettingsLink
-import live.collog.app.features.settings.views.components.SettingsMutedColor
 import live.collog.app.features.settings.views.components.SystemTextButton
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import live.collog.app.features.settings.models.relationTitle
+import live.collog.app.shared.components.spec.SpecDetailHeader
+import live.collog.app.shared.ui.designsystem.SpecColors
+import live.collog.app.shared.ui.designsystem.specCard
+import live.collog.app.shared.ui.designsystem.specText
 import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.services.api.FamilyInvitation
 import live.collog.app.shared.services.api.FamilySummary
@@ -56,13 +60,13 @@ import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogType
 import live.collog.app.shared.ui.designsystem.Pretendard
 import live.collog.app.shared.ui.designsystem.Spacing
-import live.collog.app.shared.ui.designsystem.singleLine
 import live.collog.app.shared.ui.pressable
 
 /**
- * 피그마 「최종본」 가족 구성원 관리(277:5984). 홈의 시트로 띄우면 [onClose]를 넘기고, 설정 탭 안에서는 null이다.
+ * 새 피그마 17 가족 구성원 관리(카드 탭 → 상세 시트). 옛 「최종본」 277:5984 의 동작을 유지한다. 홈의 시트로 띄우면 [onClose]를 넘기고, 설정 탭 안에서는 null이다.
  * 역할 구분 없이 누구나 초대하고, 가족이 없으면 첫 초대 때 가족을 만든다.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
     val environment = LocalAppEnvironment.current
@@ -79,6 +83,7 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
     var showsInvitationCode by remember { mutableStateOf(false) }
     var selectedInvitation by remember { mutableStateOf<FamilyInvitation?>(null) }
     var removalCandidate by remember { mutableStateOf<ManagedFamilyMember?>(null) }
+    var detailMemberId by remember { mutableStateOf<String?>(null) }
     var isRemoving by remember { mutableStateOf(false) }
     // 시트 안에서는 탭 화면 스택이 없으므로 질환 프로필을 이 화면 안에서 바꿔 그린다
     var sheetProfile by remember { mutableStateOf<ProfileTarget?>(null) }
@@ -194,19 +199,19 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(CollogColors.gray00)
+            .background(SpecColors.page)
             .then(if (onClose == null) Modifier.statusBarsPadding() else Modifier),
     ) {
-        SettingsDetailHeader("가족 구성원 관리", onBack = onClose ?: { navigator.pop() })
+        SpecDetailHeader("가족 구성원 관리", onBack = onClose ?: { navigator.pop() })
 
         Column(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.x5)
-                .padding(top = Spacing.x5, bottom = Spacing.x8),
-            verticalArrangement = Arrangement.spacedBy(28.dp),
+                .padding(horizontal = 19.dp)
+                .padding(top = 9.dp, bottom = Spacing.x8),
+            verticalArrangement = Arrangement.spacedBy(Spacing.x3),
         ) {
             if (families.size > 1) {
                 FamilyPicker(
@@ -217,29 +222,31 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
                 )
             }
 
+            // 새 피그마 17: 「함께 연결된 가족」 17/700 + 오른쪽 「N명」 10/400
+            if (!isLoading && members.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().padding(start = 0.dp, top = 6.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("함께 연결된 가족", Modifier.weight(1f), style = specText(Pretendard.Bold, 17f))
+                    Text("${members.size}명", style = specText(Pretendard.Regular, 10f, SpecColors.muted))
+                }
+            }
+
             if (isLoading) {
                 repeat(2) {
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .height(104.dp)
-                            .background(CollogColors.gray200, RoundedCornerShape(12.dp)),
+                            .height(72.dp)
+                            .background(SpecColors.chip, RoundedCornerShape(16.dp)),
                     )
                 }
             } else if (members.isEmpty() && errorText == null) {
-                SettingsCallout {
-                    SettingsCalloutText("아직 함께하는 가족이 없어요. 가족을 초대하거나 받은 초대 코드를 입력해 보세요.")
-                }
+                Text(
+                    "아직 함께하는 가족이 없어요. 가족을 초대하거나 받은 초대 코드를 입력해 보세요.",
+                    style = specText(Pretendard.Regular, 14f, SpecColors.muted),
+                )
             } else {
                 members.forEach { member ->
-                    MemberCard(member)
-                    MemberActions(
-                        member = member,
-                        enabled = !isRemoving,
-                        onEdit = { editProfile(member) },
-                        onResend = { resend(member) },
-                        onRemove = { removalCandidate = member },
-                    )
+                    MemberCard(member, onClick = { detailMemberId = member.id })
                 }
             }
 
@@ -253,25 +260,54 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
 
             // 체험 모드는 버튼만 보이고 누르면 안내한다
             val showsInvite = canInvite || isGuest
-            if (showsInvite || canEnterCode) {
-                Row(
-                    Modifier.fillMaxWidth().padding(top = Spacing.x3),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
-                ) {
-                    if (canEnterCode) {
-                        SettingsActionButton(
-                            "초대 코드 입력",
-                            Modifier.weight(1f),
-                            background = CollogColors.gray200,
-                            foreground = CollogColors.gray900,
-                        ) { showsInvitationCode = true }
-                    }
-                    if (showsInvite) {
-                        SettingsActionButton("가족 초대하기", Modifier.weight(1f)) {
-                            if (isGuest) noticeText = "체험 모드에서는 초대를 보내지 않아요." else showsInvitation = true
-                        }
-                    }
+            if (showsInvite) {
+                InviteButton {
+                    if (isGuest) noticeText = "체험 모드에서는 초대를 보내지 않아요." else showsInvitation = true
                 }
+            }
+            // 명세에 없지만 받은 초대 코드를 넣는 길은 여기뿐이라 점선 버튼 아래 글자 링크로 남긴다
+            if (canEnterCode) {
+                Text(
+                    "받은 초대 코드 입력",
+                    Modifier.align(Alignment.CenterHorizontally).pressable { showsInvitationCode = true }.padding(Spacing.x2),
+                    style = specText(Pretendard.Medium, 13f, SpecColors.sub),
+                )
+            }
+        }
+    }
+
+    // 카드를 누르면 열리는 구성원 상세: 질환 프로필 편집·초대 재발송·삭제
+    val detailMember = members.firstOrNull { it.id == detailMemberId }
+    if (detailMember != null) {
+        ModalBottomSheet(
+            onDismissRequest = { detailMemberId = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = SpecColors.page,
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 19.dp).padding(bottom = Spacing.x8),
+                verticalArrangement = Arrangement.spacedBy(Spacing.x3),
+            ) {
+                MemberCard(detailMember, onClick = null)
+                detailMember.statusText()?.let {
+                    Text(it, style = specText(Pretendard.Regular, 12f, SpecColors.muted))
+                }
+                MemberActions(
+                    member = detailMember,
+                    enabled = !isRemoving,
+                    onEdit = {
+                        detailMemberId = null
+                        editProfile(detailMember)
+                    },
+                    onResend = {
+                        detailMemberId = null
+                        resend(detailMember)
+                    },
+                    onRemove = {
+                        detailMemberId = null
+                        removalCandidate = detailMember
+                    },
+                )
             }
         }
     }
@@ -312,30 +348,51 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
 }
 
 /**
- * 피그마 구성원 카드(277:6110). 둘째 줄 「드링클리 본점」은 자리 글자라 닉네임이 있을 때만 쓴다.
- * 가족을 만든 사람은 서버가 이름 자리에 닉네임을 주므로, 제목과 같으면 둘째 줄을 비운다.
+ * 새 피그마 17 구성원 카드: 이름 13/700, 관계 12/400 muted, 오른쪽 「통화 가능」 14/700 초록.
+ * 아직 수락하지 않은 초대는 「통화 가능」 대신 상태 글자를 muted 로 보인다. [onClick]이 있으면 누르면 상세가 열린다.
  */
 @Composable
-private fun MemberCard(member: ManagedFamilyMember) {
+private fun MemberCard(member: ManagedFamilyMember, onClick: (() -> Unit)?) {
     Row(
         Modifier
-            .fillMaxWidth()
-            .background(CollogColors.gray200, RoundedCornerShape(12.dp))
-            .padding(15.dp),
+            .specCard(padding = 0.dp, radius = 16.dp)
+            .then(if (onClick != null) Modifier.pressable(onClick = onClick) else Modifier)
+            .heightIn(min = 72.dp)
+            .padding(horizontal = 17.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
-            MemberTitle(member.title)
-            val nickname = member.nickname?.takeIf { it != member.name }
-            if (nickname != null) {
-                Text(nickname, style = singleLine(Pretendard.Medium, 14f), color = CollogColors.gray700)
-            } else {
-                Spacer(Modifier.height(17.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(member.name, style = specText(Pretendard.Bold, 13f), maxLines = 1)
+            relationTitle(member.relation)?.let {
+                Text(it, style = specText(Pretendard.Regular, 12f, SpecColors.muted), maxLines = 1)
             }
-            Text(member.statusText() ?: "", style = singleLine(Pretendard.Regular, 14f), color = SettingsMutedColor)
         }
-        if (member.consentGranted) SettingsLink("동의됨")
+        if (member.isConnected) {
+            Text("통화 가능", style = specText(Pretendard.Bold, 14f, SpecColors.green))
+        } else {
+            Text(
+                if (member.invitation?.isExpired == true) "초대 만료" else "초대 대기 중",
+                style = specText(Pretendard.Medium, 13f, SpecColors.muted),
+            )
+        }
+    }
+}
+
+/** 새 피그마 17 「가족 초대하기」: 흰 점선풍 초록 테두리 버튼(`#bfe8cf`), 「+」 14/400 · 글자 14/700 초록, 높이 53. */
+@Composable
+private fun InviteButton(onClick: () -> Unit) {
+    Row(
+        Modifier
+            .specCard(padding = 0.dp, radius = 14.dp, borderColor = SpecColors.greenOutline)
+            .height(53.dp)
+            .pressable(onClick = onClick),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("+", style = specText(Pretendard.Regular, 14f, SpecColors.green))
+        Spacer(Modifier.width(24.dp))
+        Text("가족 초대하기", style = specText(Pretendard.Bold, 14f, SpecColors.green))
     }
 }
 

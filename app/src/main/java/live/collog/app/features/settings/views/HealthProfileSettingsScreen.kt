@@ -1,7 +1,6 @@
 package live.collog.app.features.settings.views
 
 import android.content.Context
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +34,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import live.collog.app.shared.components.spec.SpecDetailHeader
+import live.collog.app.shared.ui.designsystem.SpecColors
+import live.collog.app.shared.ui.designsystem.specCard
+import live.collog.app.shared.ui.designsystem.specText
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.selected
@@ -51,15 +56,11 @@ import live.collog.app.features.settings.models.CONCERNS_LIMIT
 import live.collog.app.features.settings.models.GuestSamples
 import live.collog.app.features.settings.models.HealthSelection
 import live.collog.app.features.settings.models.ProfileTarget
-import live.collog.app.features.settings.models.ageText
 import live.collog.app.features.settings.models.canSaveHealthProfile
 import live.collog.app.features.settings.models.ownProfileTarget
-import live.collog.app.features.settings.views.components.MemberTitle
 import live.collog.app.features.settings.views.components.SettingsActionButton
 import live.collog.app.features.settings.views.components.SettingsDetailHeader
-import live.collog.app.features.settings.views.components.SettingsSection
 import live.collog.app.features.settings.views.components.SystemTextButton
-import live.collog.app.shared.components.tabbar.BottomNavBar
 import live.collog.app.shared.models.HealthCondition
 import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.ui.CollogProgress
@@ -77,8 +78,19 @@ import live.collog.app.shared.ui.pressable
 private const val GUEST_CONDITIONS_KEY = "settings.guestHealthConditions"
 private const val GUEST_CONCERNS_KEY = "settings.guestHealthConcerns"
 
+/** 새 피그마 16 의 질환 5개: 서버 `Condition` 값(`schemas.py`)과 화면 글자. 이 순서로 보인다. */
+internal val SpecHealthConditions: List<Pair<String, String>> = listOf(
+    "DIABETES" to "당뇨",
+    "HYPERTENSION" to "고혈압",
+    "DYSLIPIDEMIA" to "이상지질혈증",
+    "ASTHMA" to "천식",
+    "OBESITY" to "비만",
+)
+
 /**
- * 피그마 「최종본」 질환 프로필 요약(278:6645, 비었을 때 278:6731)과 편집(269:3917 모양).
+ * 새 피그마 16 「설정 · 나의 건강 프로필」: 설명 카드 + 질환 5개(여러 개 선택) + 저장.
+ * 자유 서술 칸은 화면에 없지만, 서버에 이미 있는 값(`concerns`)은 읽어 둔 그대로 다시 보낸다.
+ * 이 화면에 없는 예전 값(건망증·호흡기 질환·비염)도 지우지 않고 그대로 돌려보낸다.
  * [target]이 null이면 나의 건강 프로필, 아니면 그 가족 구성원의 것. [inSheet]면 위쪽 상태 막대 여백을 두지 않는다.
  */
 @Composable
@@ -91,12 +103,14 @@ internal fun HealthProfileSettingsScreen(target: ProfileTarget?, onBack: () -> U
     val subject = target ?: (if (isGuest) GuestSamples.user else environment.session.user)?.let(::ownProfileTarget)
     val guestSuffix = target?.let { ".${it.id}" } ?: ""
 
-    var selection by remember { mutableStateOf(HealthSelection()) }
+    // 서버가 가진 질환 값 전부(이 화면에 없는 값 포함)와 읽어 둔 걱정되는 부분
+    var stored by remember { mutableStateOf<List<String>>(emptyList()) }
+    var picked by remember { mutableStateOf<Set<String>>(emptySet()) }
     var concerns by remember { mutableStateOf("") }
     var profileLoaded by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
+    var isSaving by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
-    var isEditing by remember { mutableStateOf(false) }
 
     suspend fun load() {
         isLoading = true
@@ -104,19 +118,20 @@ internal fun HealthProfileSettingsScreen(target: ProfileTarget?, onBack: () -> U
         try {
             if (isGuest) {
                 val (conditions, note) = GuestSamples.profile(target?.id)
-                selection = HealthSelection.fromGuestString(guestPrefs.getString(GUEST_CONDITIONS_KEY + guestSuffix, conditions) ?: "")
+                stored = (guestPrefs.getString(GUEST_CONDITIONS_KEY + guestSuffix, conditions) ?: "")
+                    .split(",").filter { it.isNotBlank() }
                 concerns = guestPrefs.getString(GUEST_CONCERNS_KEY + guestSuffix, note) ?: ""
-                profileLoaded = true
-                return
+            } else {
+                val id = subject?.id
+                if (id == null) {
+                    errorText = "로그인이 필요해요."
+                    return
+                }
+                val profile = environment.api.profile(id)
+                stored = profile.conditions
+                concerns = profile.concerns.orEmpty()
             }
-            val id = subject?.id
-            if (id == null) {
-                errorText = "로그인이 필요해요."
-                return
-            }
-            val profile = environment.api.profile(id)
-            selection = HealthSelection.fromProfile(profile.conditions, profile.hasCompletedSetup)
-            concerns = profile.concerns.orEmpty()
+            picked = stored.filter { code -> SpecHealthConditions.any { it.first == code } }.toSet()
             profileLoaded = true
         } catch (error: CancellationException) {
             throw error
@@ -127,167 +142,128 @@ internal fun HealthProfileSettingsScreen(target: ProfileTarget?, onBack: () -> U
         }
     }
 
-    suspend fun save(next: HealthSelection, note: String) {
-        val trimmed = note.trim()
-        if (isGuest) {
-            guestPrefs.edit()
-                .putString(GUEST_CONDITIONS_KEY + guestSuffix, next.values.joinToString(","))
-                .putString(GUEST_CONCERNS_KEY + guestSuffix, trimmed)
-                .apply()
-            selection = next
-            concerns = trimmed
-        } else {
-            val id = subject?.id ?: throw ApiError.Unauthenticated
-            val saved = environment.api.updateProfile(id, next.values, trimmed)
-            selection = HealthSelection.fromProfile(saved.conditions, hasCompletedSetup = true)
-            concerns = saved.concerns.orEmpty()
+    fun save() {
+        if (!profileLoaded || isSaving || isLoading) return
+        isSaving = true
+        errorText = null
+        // 이 화면이 모르는 값은 그대로 두고, 아는 5개만 고른 대로 바꾼다
+        val values = (stored.filter { code -> SpecHealthConditions.none { it.first == code } } + picked).distinct().sorted()
+        val note = concerns.trim()
+        scope.launch {
+            try {
+                if (isGuest) {
+                    guestPrefs.edit()
+                        .putString(GUEST_CONDITIONS_KEY + guestSuffix, values.joinToString(","))
+                        .putString(GUEST_CONCERNS_KEY + guestSuffix, note)
+                        .apply()
+                } else {
+                    val id = subject?.id ?: throw ApiError.Unauthenticated
+                    environment.api.updateProfile(id, values, note)
+                }
+                Haptics.commit()
+                onBack()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                errorText = error.message
+            } finally {
+                isSaving = false
+            }
         }
-        isEditing = false
     }
 
     LaunchedEffect(Unit) { load() }
-    BackHandler(enabled = isEditing) { isEditing = false }
 
-    val screen = Modifier
-        .fillMaxSize()
-        .background(CollogColors.gray00)
-        .then(if (inSheet) Modifier else Modifier.statusBarsPadding())
-    if (isEditing) {
-        HealthProfileEditor(
-            initialSelection = selection,
-            initialConcerns = concerns,
-            onCancel = { isEditing = false },
-            onSave = ::save,
-            modifier = screen,
-            // 탭 안에서는 아래 막대의 전화 버튼이 막대 위로 튀어나온 만큼 버튼을 올린다
-            bottomInset = if (inSheet) 0.dp else BottomNavBar.topPadding,
-        )
-        return
-    }
-
-    Column(screen) {
-        SettingsDetailHeader(if (target == null) "나의 건강 프로필" else "가족 건강 프로필", onBack = onBack)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(SpecColors.page)
+            .then(if (inSheet) Modifier else Modifier.statusBarsPadding()),
+    ) {
+        SpecDetailHeader(if (target == null) "나의 건강 프로필" else "가족 건강 프로필", onBack = onBack)
 
         Column(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.x5)
-                .padding(top = Spacing.x5, bottom = Spacing.x8),
-            verticalArrangement = Arrangement.spacedBy(28.dp),
+                .padding(horizontal = 19.dp)
+                .padding(top = 9.dp, bottom = Spacing.x8),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SettingsSection("질환 프로필", spacing = Spacing.x5) {
-                ProfileSummaryCard(
-                    title = subject?.title ?: "",
-                    age = ageText(subject?.birthDate),
-                    selection = selection,
-                    concerns = concerns,
-                    isLoading = isLoading,
+            Column(
+                Modifier.specCard(padding = 0.dp, radius = 16.dp).padding(horizontal = 17.dp, vertical = 17.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    if (target == null) "건강 질문을 맞춤 준비해드려요" else "${subject?.title.orEmpty()} 건강 프로필",
+                    style = specText(Pretendard.Bold, 18f),
+                )
+                Text(
+                    "선택한 항목은 오늘의 질문과 통화 요약을 준비할 때 참고해요.",
+                    style = specText(Pretendard.Regular, 12f, SpecColors.muted),
                 )
             }
 
-            SettingsActionButton(
-                "질환 프로필 편집",
-                Modifier.fillMaxWidth(),
-                enabled = profileLoaded && !isLoading,
-            ) { isEditing = true }
+            Spacer(Modifier.height(2.dp))
+            SpecHealthConditions.forEach { (code, title) ->
+                ConditionOption(
+                    title = title,
+                    isSelected = code in picked,
+                    enabled = profileLoaded && !isSaving,
+                ) {
+                    picked = if (code in picked) picked - code else picked + code
+                    Haptics.focus()
+                }
+            }
+
+            Spacer(Modifier.height(2.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .alpha(if (profileLoaded && !isSaving) 1f else 0.4f)
+                    .background(SpecColors.toggleOn, RoundedCornerShape(14.dp))
+                    .pressable(enabled = profileLoaded && !isSaving, onClick = ::save),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isLoading) {
+                    CollogProgress()
+                } else {
+                    Text(if (isSaving) "저장 중" else "저장", style = specText(Pretendard.Bold, 18f, Color.White))
+                }
+            }
 
             errorText?.let {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
                     Text(it, style = CollogType.body03Medium, color = CollogColors.red500)
-                    SystemTextButton("다시 시도", enabled = !isLoading) { scope.launch { load() } }
+                    if (!profileLoaded) SystemTextButton("다시 시도", enabled = !isLoading) { scope.launch { load() } }
                 }
             }
         }
     }
 }
 
-/** 피그마 질환 프로필 카드(278:7153). */
+/** 새 피그마 「선택지」: 흰 카드(둥글기 14), 고르면 연초록 바탕 `#f2faf5` + 초록 테두리 `#9addb4` + 오른쪽 초록 체크. 글자 12.5/500. */
 @Composable
-private fun ProfileSummaryCard(title: String, age: String?, selection: HealthSelection, concerns: String, isLoading: Boolean) {
-    val conditions = selection.ordered
-    val isEmpty = conditions.isEmpty() && concerns.isBlank()
-    Column(
+private fun ConditionOption(title: String, isSelected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Row(
         Modifier
-            .fillMaxWidth()
-            .background(CollogColors.gray200, RoundedCornerShape(Radius.listItem))
-            .padding(start = 11.dp, end = 11.dp, top = 19.dp, bottom = 27.dp),
-        verticalArrangement = Arrangement.spacedBy(if (isEmpty) Spacing.x5 else 30.dp),
+            .specCard(
+                padding = 0.dp,
+                background = if (isSelected) SpecColors.greenSelected else Color.White,
+                shadowed = !isSelected,
+                radius = 14.dp,
+                borderColor = if (isSelected) SpecColors.greenBorder else SpecColors.cardBorder,
+            )
+            .height(53.dp)
+            .semantics { selected = isSelected }
+            .pressable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 17.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(17.dp)) {
-            MemberTitle(title, trailing = age)
-            if (!isEmpty && !isLoading) {
-                Text("질환이나 걱정되는 부분을 관리해 보아요", style = CollogType.body02Regular, color = CollogColors.gray800)
-            }
-        }
-        when {
-            isLoading -> CollogProgress()
-            isEmpty -> Text(
-                if (selection.hasNoConditions) "선택한 질환이 없어요" else "아직 등록한 질환이 없어요\n질환 프로필을 편집해 보세요!",
-                style = pretendard(Pretendard.Regular, 16f).copy(lineHeight = 22.4.sp),
-                color = CollogColors.gray800,
-            )
-            else -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                conditions.forEach { ConditionSummaryRow(it) }
-                if (concerns.isNotBlank()) {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .background(CollogColors.green100, RoundedCornerShape(Radius.listItem))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.x1),
-                    ) {
-                        Text("추가로 걱정되는 부분", style = CollogType.body02Semibold, color = CollogColors.gray800)
-                        Text(concerns, style = CollogType.body02Regular, color = CollogColors.gray800)
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** 피그마 질환 줄(278:7069). 누르면 수집 정보·활용(277:5137)을 펼친다. */
-@Composable
-private fun ConditionSummaryRow(condition: HealthCondition) {
-    var expanded by rememberSaveable(condition.rawValue) { mutableStateOf(false) }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(CollogColors.green100, RoundedCornerShape(Radius.listItem))
-            .pressable { expanded = !expanded }
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                painterResource(R.drawable.ic_condition_badge),
-                contentDescription = null,
-                tint = CollogColors.green700,
-                modifier = Modifier.size(24.dp),
-            )
-            Spacer(Modifier.width(15.dp))
-            Text(
-                condition.title,
-                style = pretendard(Pretendard.SemiBold, 16f).copy(lineHeight = 22.4.sp),
-                color = CollogColors.gray800,
-                modifier = Modifier.weight(1f),
-            )
-            Icon(
-                painterResource(R.drawable.ic_chevron_right),
-                contentDescription = if (expanded) "설명 접기" else "설명 보기",
-                tint = CollogColors.green700,
-                modifier = Modifier.size(24.dp).rotate(if (expanded) 90f else 0f),
-            )
-        }
-        if (expanded) {
-            Text(
-                conditionDescription(condition),
-                style = CollogType.body02Regular,
-                color = CollogColors.gray800,
-                modifier = Modifier.padding(start = 39.dp),
-            )
-        }
+        Text(title, Modifier.weight(1f), style = specText(Pretendard.Medium, 12.5f))
+        if (isSelected) CollogIcon("checkmark", size = 17.dp, color = SpecColors.green)
     }
 }
 

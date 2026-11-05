@@ -57,9 +57,6 @@ import live.collog.app.shared.ui.pressable
 // 피그마 「최종본」 설정(275:5311~278:6731)에만 나오는 색
 internal val SettingsSectionTitleColor = Color(0xFF353C49)
 internal val SettingsMutedColor = Color(0xFF71788C)
-private val ListLabelColor = Color(0xFF222222)
-private val ListArrowColor = Color(0xFFB1B9BE)
-private val ListDividerColor = Color(0xFFE9EBED)
 
 /** 피그마 Top Navigator Bar: 흰 64dp, 아래 1dp 선, 왼쪽 뒤로 버튼, 가운데 제목. [onBack]이 null이면 뒤로 버튼이 없다. */
 @Composable
@@ -94,33 +91,6 @@ fun SettingsDetailHeader(title: String, onBack: (() -> Unit)?) {
             }
         }
         Text(title, style = singleLine(Pretendard.SemiBold, 18f), color = CollogColors.gray900)
-    }
-}
-
-/** 피그마 MySettingListItem(275:5322): 52dp 흰 줄, 17pt 글자, 오른쪽 꺾쇠, 아래 옅은 선. */
-@Composable
-fun SettingsNavigationRow(label: String, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .pressable(onClick = onClick)
-            .drawBehind {
-                val y = size.height - 0.25.dp.toPx()
-                drawLine(ListDividerColor, Offset(0f, y), Offset(size.width, y), 0.5.dp.toPx())
-            }
-            .padding(start = Spacing.x5, end = Spacing.x3),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, style = singleLine(Pretendard.Regular, 17f), color = ListLabelColor, modifier = Modifier.weight(1f))
-        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-            Icon(
-                painterResource(R.drawable.ic_chevron_right),
-                contentDescription = null,
-                tint = ListArrowColor,
-                modifier = Modifier.size(20.dp),
-            )
-        }
     }
 }
 
