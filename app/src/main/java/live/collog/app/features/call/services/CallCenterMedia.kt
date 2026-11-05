@@ -27,20 +27,22 @@ internal fun CallCenter.activateAudio() {
 }
 
 fun CallCenter.updateQuestionVoicePreference() {
-    if (environment.settings.questionVoiceEnabled) {
-        speakQuestionsIfReady()
-    } else {
+    if (!environment.settings.questionVoiceEnabled) {
+        // 읽던 질문을 멈추고 연결음만 다시 낸다.
         platform.stopQuestions()
         spokenCallId = null
     }
+    speakQuestionsIfReady()
 }
 
+/** 거는 쪽이 울리는 동안: 질문 음성 안내가 켜져 있으면 질문을 읽고, 그 뒤(꺼져 있으면 처음부터) 연결음을 낸다. */
 internal fun CallCenter.speakQuestionsIfReady() {
     val call = activeCall ?: return
     if (call.direction != CallCenter.Direction.Outgoing || call.phase != CallPhase.Ringing) return
-    if (!isAudioSessionActive || !environment.settings.questionVoiceEnabled || spokenCallId == call.id) return
+    if (!isAudioSessionActive || spokenCallId == call.id) return
     spokenCallId = call.id
-    platform.speakQuestions(serverQuestions, call.id, environment.api) { log(it) }
+    val questions = if (environment.settings.questionVoiceEnabled) serverQuestions else emptyList()
+    platform.speakQuestions(questions, call.id, environment.api) { log(it) }
 }
 
 fun CallCenter.toggleMute() {

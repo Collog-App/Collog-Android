@@ -2,7 +2,9 @@ package live.collog.app.features.call.services
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.MediaPlayer
+import android.media.ToneGenerator
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import java.io.ByteArrayOutputStream
@@ -21,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.currentCoroutineContext
@@ -52,7 +55,8 @@ import okhttp3.WebSocketListener
 import okio.ByteString
 
 /**
- * iOS `RingingQuestionSpeaker`. 통화가 울리는 동안 오늘의 질문을 통화 음성 경로로 읽어 준다.
+ * iOS `RingingQuestionSpeaker`. 통화가 울리는 동안 오늘의 질문을 통화 음성 경로로 읽어 주고,
+ * 다 읽은 뒤에는 상대가 받거나 끊을 때까지 연결음을 낸다(안드로이드에서 더한 것).
  * 메인 스레드에서 부른다.
  */
 class RingingQuestionSpeaker(context: Context, private val http: OkHttpClient) {
@@ -93,9 +97,12 @@ class RingingQuestionSpeaker(context: Context, private val http: OkHttpClient) {
                     } catch (error: Exception) {
                         ensureActive()
                         onEvent(error.message ?: error.toString())
-                        return@launch
+                        break
                     }
                 }
+                if (!isActive || this@RingingQuestionSpeaker.generation !== generation) return@launch
+                // 질문이 끝난 뒤 조용하면 상대가 받았는지 알 수 없다. 받거나 끊을 때(stop)까지 연결음을 낸다.
+                playRingback(onEvent)
             } finally {
                 if (this@RingingQuestionSpeaker.generation === generation) {
                     task = null
@@ -114,6 +121,24 @@ class RingingQuestionSpeaker(context: Context, private val http: OkHttpClient) {
         player?.release()
         player = null
         releaseTextToSpeech()
+    }
+
+    /** 통화 음성 경로로 연결음을 반복한다. 작업이 취소될 때(stop) 멈춘다. */
+    private suspend fun playRingback(onEvent: (String) -> Unit) {
+        val tone = try {
+            ToneGenerator(AudioManager.STREAM_VOICE_CALL, RINGBACK_VOLUME)
+        } catch (error: RuntimeException) {
+            onEvent("연결음을 낼 수 없어요: ${error.message}")
+            return
+        }
+        try {
+            tone.startTone(ToneGenerator.TONE_SUP_RINGTONE)
+            onEvent("연결음 재생")
+            awaitCancellation()
+        } finally {
+            tone.stopTone()
+            tone.release()
+        }
     }
 
     private suspend fun speakQuestion(question: ApiQuestion, callId: String, api: CollogApi, onEvent: (String) -> Unit) {
@@ -296,6 +321,8 @@ class RingingQuestionSpeaker(context: Context, private val http: OkHttpClient) {
         const val DOWNLOAD_TIMEOUT_SECONDS = 8L
         const val AUDIO_DIRECTORY = "ringing-question-audio"
         const val NORMAL_CLOSURE = 1000
+        /** ToneGenerator 음량(0~100, 통화 음량 기준 비율). */
+        const val RINGBACK_VOLUME = 80
     }
 }
 
