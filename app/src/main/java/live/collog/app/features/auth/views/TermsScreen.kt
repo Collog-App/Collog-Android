@@ -58,8 +58,8 @@ import live.collog.app.shared.ui.designsystem.Spacing
 import live.collog.app.shared.ui.designsystem.pretendard
 import live.collog.app.shared.ui.pressable
 
-/** 서비스 이용약관 주소. 생기면 넣는다(그 전까지 「보기」를 숨긴다). */
-private val SERVICE_TERMS_URL: String? = null
+/** 서비스 이용약관 주소. 비우면 「보기」를 숨긴다. */
+private val SERVICE_TERMS_URL: String? = "https://privacy.collog.live/terms.html"
 private const val PRIVACY_URL = "https://privacy.collog.live"
 
 /**
