@@ -40,7 +40,7 @@ fun CallTimelineEntry.Companion.fromBundle(
 
     // 새 피그마 「평소 N분」: 최근 통화들의 평균(3건 미만이면 호출하는 쪽이 null 을 준다)
     val stats = mutableListOf(
-        CallStat("통화 길이", "${max(durationSec / 60, 0)}", "분", usualCallMinutes?.let { StatNote("평소 ${it}분") }),
+        CallStat("통화 길이", "${(max(durationSec, 0) + 59) / 60}", "분", usualCallMinutes?.let { StatNote("평소 ${it}분") }),
     )
     val speechValue = speechRate?.value
     if (speechRate != null && speechValue != null) {

@@ -1,7 +1,5 @@
 package live.collog.app.features.report.models
 
-import java.math.BigDecimal
-import java.math.RoundingMode
 import live.collog.app.shared.components.stat.CallStat
 import live.collog.app.shared.components.stat.StatNote
 import live.collog.app.shared.services.api.CallSummaryDto
@@ -9,7 +7,8 @@ import live.collog.app.shared.services.api.CallSummaryDto
 private fun analyzedSeconds(calls: List<CallSummaryDto>): Int =
     calls.filter { it.isAnalyzed }.sumOf { it.durationSec ?: 0 }
 
-private fun minutes(seconds: Int): Int = BigDecimal(seconds / 60.0).setScale(0, RoundingMode.HALF_UP).toInt()
+/** 초를 먼저 합친 뒤 올림: 0초 초과면 최소 1분. */
+private fun minutes(seconds: Int): Int = (seconds + 59) / 60
 
 /**
  * 새 피그마 05·07의 통화 요약(분석된 통화·총 통화 시간·분당 되물음)을 통화 목록으로 계산해 넣는다.

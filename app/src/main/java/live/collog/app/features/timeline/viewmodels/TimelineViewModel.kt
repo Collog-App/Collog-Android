@@ -309,7 +309,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             .sortedByDescending { it.startedAt }
             .take(10)
         if (recent.size < 3) return null
-        return Math.round(recent.sumOf { it.durationSec ?: 0 } / recent.size / 60.0).toInt()
+        return (recent.sumOf { it.durationSec ?: 0 } / recent.size + 59) / 60
     }
 
     /** Swift `try?`: 실패하면 null. 취소는 삼키지 않는다. */

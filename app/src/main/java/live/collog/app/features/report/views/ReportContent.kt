@@ -38,10 +38,6 @@ import live.collog.app.shared.ui.designsystem.specText
 @Composable
 fun ReportContent(report: WeeklyReport, modifier: Modifier = Modifier, isLoaded: Boolean = true) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.x3)) {
-        if (report.state == ReportState.BaselineCollecting) {
-            NoticeBanner("아직 평소 범위를 모으는 중이에요. " + "통화가 쌓이면 변화를 보여드릴게요.")
-        }
-
         SpecStatRow(report.summaryStats, Modifier.specCard(padding = 15.dp))
 
         ChangeSignalCard(report.changeSignals)
@@ -65,7 +61,9 @@ fun ReportContent(report: WeeklyReport, modifier: Modifier = Modifier, isLoaded:
             }
         }
 
-        if (report.metricTrends.isNotEmpty()) {
+        // 새 피그마 06·07 의 「지난 흐름」에는 말씀 속도(와 견본의 되물으심)만 있다
+        val trends = report.metricTrends.filter { it.label == "말씀 속도" || it.label == "되물으심" }
+        if (trends.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
                 Text(
                     "지난 흐름",
@@ -73,7 +71,7 @@ fun ReportContent(report: WeeklyReport, modifier: Modifier = Modifier, isLoaded:
                     modifier = Modifier.padding(start = Spacing.x1),
                 )
 
-                report.metricTrends.forEach { MetricTrendRow(it) }
+                trends.forEach { MetricTrendRow(it) }
             }
         }
 
@@ -106,20 +104,5 @@ private fun RepeatCard(report: WeeklyReport) {
 
         Spacer(Modifier.height(16.dp))
         Text(report.repeatObservation.caption, style = specText(Pretendard.Regular, 14f, SpecColors.muted))
-    }
-}
-
-@Composable
-private fun NoticeBanner(text: String) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(CollogColors.gray100, RoundedCornerShape(Radius.btnXsmall))
-            .padding(Spacing.x3),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
-        verticalAlignment = Alignment.Top,
-    ) {
-        CollogIcon("info.circle", size = IconSize.small, color = CollogColors.gray700)
-        Text(text, style = CollogType.caption01Medium, color = CollogColors.gray800, modifier = Modifier.weight(1f))
     }
 }

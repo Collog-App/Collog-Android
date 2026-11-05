@@ -70,7 +70,9 @@ class CallTimelineEntryMappingTests {
         assertEquals("14분 27초", entry.durationText)
         assertEquals(1, entry.summaryStats.size)
         assertEquals("통화 길이", entry.summaryStats[0].label)
-        assertEquals("14", entry.summaryStats[0].value)
+        // 분은 올림(14분 27초 → 15분), 0초 초과면 최소 1분
+        assertEquals("15", entry.summaryStats[0].value)
+        assertEquals("1", CallTimelineEntry.fromBundle(bundle(durationSec = 40), emptyMap()).summaryStats[0].value)
         assertEquals("분", entry.summaryStats[0].unit)
         assertNull(entry.summaryStats[0].note)
     }
