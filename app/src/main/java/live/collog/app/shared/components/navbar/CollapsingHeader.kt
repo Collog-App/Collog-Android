@@ -58,8 +58,9 @@ import live.collog.app.shared.ui.Haptics
 import live.collog.app.shared.ui.OnChange
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogIcon
-import live.collog.app.shared.ui.designsystem.CollogType
+import live.collog.app.shared.ui.designsystem.Pretendard
 import live.collog.app.shared.ui.designsystem.Spacing
+import live.collog.app.shared.ui.designsystem.specText
 import live.collog.app.shared.ui.pressable
 
 private val CollapseDistance = 44.dp
@@ -71,7 +72,7 @@ private val ScrollToTopShowOffset = 520.dp
 /** iOS `CollapsingLargeTitle`. */
 @Composable
 fun CollapsingLargeTitle(title: String) {
-    Text(title, style = CollogType.headline02, color = CollogColors.gray900)
+    Text(title, style = specText(Pretendard.Bold, 28f))
 }
 
 /**
@@ -233,8 +234,7 @@ fun CollapsingHeaderScrollView(
             ) {
                 Text(
                     title,
-                    style = CollogType.body01Semibold,
-                    color = CollogColors.gray900,
+                    style = specText(Pretendard.Bold, 15f),
                     modifier = Modifier.graphicsLayer { alpha = collapseProgress() },
                 )
                 Spacer(Modifier.weight(1f).padding(start = Spacing.x2))

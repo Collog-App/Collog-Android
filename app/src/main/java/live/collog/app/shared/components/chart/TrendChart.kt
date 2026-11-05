@@ -43,11 +43,10 @@ import java.text.DecimalFormatSymbols
 import java.time.Instant
 import java.util.Locale
 import live.collog.app.shared.components.stat.ValueWithUnit
-import live.collog.app.shared.ui.designsystem.CollogColors
-import live.collog.app.shared.ui.designsystem.CollogType
+import live.collog.app.shared.ui.designsystem.SpecColors
 import live.collog.app.shared.ui.designsystem.Pretendard
 import live.collog.app.shared.ui.designsystem.Spacing
-import live.collog.app.shared.ui.designsystem.pretendard
+import live.collog.app.shared.ui.designsystem.specText
 
 // iOS Swift Charts 설정값: X축 양 끝 여백 8, 위아래 여백 Spacing.x2
 private val PlotPaddingX = 8.dp
@@ -65,6 +64,7 @@ fun TrendChart(
     modifier: Modifier = Modifier,
     showsReadout: Boolean = true,
     chartHeight: Dp = 132.dp,
+    compact: Boolean = false,
 ) {
     var selectedDate by remember { mutableStateOf<Instant?>(null) }
     val reveal = remember { Animatable(0f) }
@@ -77,9 +77,10 @@ fun TrendChart(
     val yDomain = remember(series) { yDomain(series) }
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.x3)) {
-        if (showsReadout) Readout(series, focusedPoint)
+        if (showsReadout) Readout(series, focusedPoint, compact)
 
-        Box(
+        // 점이 하나뿐이면 선이 안 그려지니 읽는 값만 보인다
+        if (series.points.size >= 2) Box(
             Modifier
                 .fillMaxWidth()
                 .height(chartHeight)
@@ -102,18 +103,22 @@ fun TrendChart(
                 },
         ) {
             Canvas(Modifier.fillMaxSize()) { drawChart(series, yDomain, focusedPoint) }
-            AxisLabels(series)
+            AxisLabels(series, compact)
         }
     }
 }
 
 @Composable
-private fun Readout(series: TrendSeries, focusedPoint: TrendPoint?) {
+private fun Readout(series: TrendSeries, focusedPoint: TrendPoint?, compact: Boolean) {
+    // 새 피그마(05 리포트 / 02 가족 건강 compact): 글자 크기만 다르다
+    val labelSize = if (compact) 10.5f else 12f
+    val valueSize = if (compact) 16f else 20f
+    val unitSize = if (compact) 10f else 12f
+    val tagSize = if (compact) 10f else 11f
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.x2)) {
         Text(
             focusedPoint?.label ?: series.metricName,
-            style = CollogType.caption01Medium,
-            color = CollogColors.gray800,
+            style = specText(Pretendard.Regular, labelSize, SpecColors.muted),
             modifier = Modifier.alignBy(FirstBaseline),
         )
         Spacer(Modifier.weight(1f))
@@ -121,10 +126,10 @@ private fun Readout(series: TrendSeries, focusedPoint: TrendPoint?) {
             ValueWithUnit(
                 value = READOUT_FORMAT.format(focusedPoint.value),
                 unit = series.unit,
-                valueStyle = pretendard(Pretendard.SemiBold, 20f),
-                valueColor = CollogColors.gray900,
-                unitStyle = CollogType.caption01Medium,
-                unitColor = CollogColors.gray800,
+                valueStyle = specText(Pretendard.Bold, valueSize),
+                valueColor = SpecColors.ink,
+                unitStyle = specText(Pretendard.Regular, unitSize),
+                unitColor = SpecColors.sub,
                 modifier = Modifier.alignBy(FirstBaseline),
             )
 
@@ -132,15 +137,13 @@ private fun Readout(series: TrendSeries, focusedPoint: TrendPoint?) {
                 val within = series.isWithinNormalRange(focusedPoint)
                 Text(
                     if (within) "평소 범위" else "평소와 다름",
-                    style = CollogType.caption01Medium,
-                    color = if (within) CollogColors.greenDark else CollogColors.orange600,
+                    style = specText(Pretendard.Bold, tagSize, if (within) SpecColors.green else SpecColors.orange),
                     modifier = Modifier.alignBy(FirstBaseline),
                 )
             } else {
                 Text(
                     "비교할 기록 수집 중",
-                    style = CollogType.caption01Medium,
-                    color = CollogColors.gray700,
+                    style = specText(Pretendard.Regular, tagSize, SpecColors.muted),
                     modifier = Modifier.alignBy(FirstBaseline),
                 )
             }
@@ -150,29 +153,26 @@ private fun Readout(series: TrendSeries, focusedPoint: TrendPoint?) {
 
 /** X축에는 처음과 마지막 날짜의 이름표만 둔다(처음은 왼쪽 위 기준, 마지막은 오른쪽 위 기준). */
 @Composable
-private fun AxisLabels(series: TrendSeries) {
+private fun AxisLabels(series: TrendSeries, compact: Boolean) {
     val first = series.points.firstOrNull() ?: return
     val last = series.points.last()
-    val labelStyle = CollogType.caption01Medium
+    val labelStyle = specText(Pretendard.Regular, if (compact) 10f else 11f, SpecColors.muted)
     Box(Modifier.fillMaxSize()) {
         if (first.date == last.date) {
             Text(
                 series.nearest(first.date)?.label.orEmpty(),
                 style = labelStyle,
-                color = CollogColors.gray700,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         } else {
             Text(
                 series.nearest(first.date)?.label.orEmpty(),
                 style = labelStyle,
-                color = CollogColors.gray700,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = PlotPaddingX),
             )
             Text(
                 series.nearest(last.date)?.label.orEmpty(),
                 style = labelStyle,
-                color = CollogColors.gray700,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = PlotPaddingX),
             )
         }
@@ -222,7 +222,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawChart(
 
     if (series.hasPersonalBaseline) {
         val medianY = y(series.median)
-        drawLine(CollogColors.gray300, Offset(0f, medianY), Offset(size.width, medianY), strokeWidth = 1.dp.toPx())
+        drawLine(SpecColors.line, Offset(0f, medianY), Offset(size.width, medianY), strokeWidth = 1.dp.toPx())
     }
 
     val offsets = points.map { Offset(x(it), y(it.value)) }
@@ -237,21 +237,21 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawChart(
     drawPath(
         area,
         Brush.verticalGradient(
-            listOf(CollogColors.greenNormal.copy(alpha = 0.18f), CollogColors.greenNormal.copy(alpha = 0.01f)),
+            listOf(SpecColors.chartGreen.copy(alpha = 0.25f), SpecColors.chartGreen.copy(alpha = 0f)),
             startY = offsets.minOf { it.y },
             endY = plotBottom,
         ),
     )
     drawPath(
         curve,
-        CollogColors.greenNormal,
+        SpecColors.chartGreen,
         style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
     )
 
     if (focusedPoint != null) {
         val side = 9.dp.toPx()
         drawRoundRect(
-            CollogColors.greenDark,
+            SpecColors.green,
             Offset(x(focusedPoint) - side / 2, y(focusedPoint.value) - side / 2),
             Size(side, side),
             CornerRadius(2.dp.toPx()),

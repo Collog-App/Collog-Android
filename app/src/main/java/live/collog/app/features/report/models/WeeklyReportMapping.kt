@@ -9,7 +9,10 @@ import live.collog.app.shared.services.api.MetricLabel
 import live.collog.app.shared.services.api.ReportDto
 import live.collog.app.shared.services.api.SignalDto
 
-/** iOS `WeeklyReport.init(dto:trend:)`. 분석된 통화가 없으면 서버 상태와 관계없이 빈 리포트. */
+/**
+ * iOS `WeeklyReport.init(dto:trend:)`. 분석된 통화가 없으면 서버 상태와 관계없이 빈 리포트.
+ * 총 통화 시간·지난주 비교·분당 되물음은 통화 목록이 있어야 계산돼서 [withCallStats]가 채운다.
+ */
 fun WeeklyReport.Companion.fromDto(dto: ReportDto, trend: TrendSeries?): WeeklyReport {
     if (dto.analyzedCallCount <= 0) return empty
 
@@ -40,20 +43,17 @@ fun WeeklyReport.Companion.fromDto(dto: ReportDto, trend: TrendSeries?): WeeklyR
             )
         }
 
-    val itemCount = dto.conversationItems.values.sumOf { it.size }
-
     return WeeklyReport(
         state = state(dto.state),
         noticeText = dto.emptyMessage,
         summaryStats = listOf(
             CallStat("분석된 통화", "${dto.analyzedCallCount}", "건", null),
-            CallStat("기록된 대화", "$itemCount", "개", null),
         ),
         changeSignals = signals,
         conversationGroups = groups,
         repeatObservation = RepeatObservation(
             countText = "${dto.repeatObservation.count}",
-            perMinuteText = "통화 ${dto.repeatObservation.callsWithRepeat}건에서 관찰",
+            perMinuteText = "",
             caption = "대화 중 다시 물어보신 횟수예요",
         ),
         acousticTrend = trend,
@@ -66,8 +66,9 @@ private fun metricTrends(dto: ReportDto): List<MetricTrend> {
     val history = dto.recentAcousticHistory ?: dto.acousticTrends
     return history.mapNotNull { item ->
         val values = item.points.mapNotNull { it.value }
-        val latest = values.lastOrNull()
-        if (values.size < 2 || latest == null) return@mapNotNull null
+        if (values.size < 2) return@mapNotNull null
+        // 새 피그마 06·07: 음향 추세 카드(그 주 평균)와 같은 숫자로 맞춘다. 횟수 지표는 마지막 통화 값
+        val latest = if (item.metric == "SPEECH_RATE") values.average() else values.last()
 
         MetricTrend(
             label = MetricLabel.korean(item.metric),

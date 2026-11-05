@@ -162,12 +162,12 @@ class TimelineViewModelTests {
         val entry = page.entries[0]
         assertEquals("허리가 아프다", entry.story)
         assertEquals("215", entry.summaryStats[1].value)
-        assertEquals("7.7%", entry.summaryStats[1].note?.text)
+        assertEquals("평소 200", entry.summaryStats[1].note?.text)
         assertEquals(listOf("되물으심"), entry.counts.map { it.label })
 
-        // 기준 한 번, 앞 주(-1)까지 같이 불러온다
+        // 기준 한 번, 앞 주(-1)까지 같이 불러온다. 리포트는 현재 주·앞 주 + 추세에 필요한 주(-2..-5, 앞 주의 -6) 6개
         assertEquals(1, fixture.paths.count { it.endsWith("/baseline") })
-        assertEquals(2, fixture.paths.count { it.endsWith("/reports") })
+        assertEquals(8, fixture.paths.count { it.endsWith("/reports") })
         assertEquals(setOf(0, -1), model.pages.keys)
     }
 
@@ -180,7 +180,7 @@ class TimelineViewModelTests {
         val reportQuery = fixture.requests.first { it.path().endsWith("/reports") }.url
         assertEquals("WEEKLY", reportQuery.queryParameter("period"))
         assertEquals("2026-10-17", reportQuery.queryParameter("date"))
-        val callsQuery = fixture.requests.first { it.path().endsWith("/calls") }.url
+        val callsQuery = fixture.requests.first { it.path().endsWith("/calls") && it.url.queryParameter("from") != null }.url
         assertEquals("2026-10-12", callsQuery.queryParameter("from"))
         assertEquals("2026-10-18", callsQuery.queryParameter("to"))
     }
@@ -231,9 +231,9 @@ class TimelineViewModelTests {
         assertEquals(first, fixture.paths.size)
 
         model.refresh(fixture.environment, forceReload = true)
-        // 강제 새로고침은 현재 주만, 기준은 이미 모아 둔 것을 쓴다
+        // 처음 6개(현재 주 + 추세용 5주) 뒤에 강제 새로고침은 현재 주 하나만 더 받는다. 기준은 이미 모아 둔 것을 쓴다
         assertEquals(1, fixture.paths.count { it.endsWith("/baseline") })
-        assertEquals(2, fixture.paths.count { it.endsWith("/reports") })
+        assertEquals(6 + 1, fixture.paths.count { it.endsWith("/reports") })
         assertEquals(setOf(0), model.pages.keys)
     }
 

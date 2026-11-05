@@ -11,8 +11,10 @@ import live.collog.app.shared.services.api.AcousticFeaturesDto
 import live.collog.app.shared.services.api.BaselineDto
 import live.collog.app.shared.services.api.CallSummaryDto
 import live.collog.app.shared.services.api.ExtractionDto
+import live.collog.app.shared.services.api.ExtractionFactDto
 import live.collog.app.shared.services.api.RepeatEventDto
 import live.collog.app.shared.services.api.TranscriptDto
+import live.collog.app.shared.services.api.TranscriptSegmentDto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -83,14 +85,9 @@ class CallTimelineEntryMappingTests {
 
     @Test
     fun speechRateNoteComparesToBaselineMedian() {
-        val cases = listOf(
-            Triple(215.4, "7.7%", StatTrend.Up) to "215",
-            Triple(190.0, "5.0%", StatTrend.Down) to "190",
-            Triple(200.4, "0.2%", StatTrend.Flat) to "200",
-            Triple(208.5, "4.2%", StatTrend.Up) to "209",
-        )
-        for ((expected, rounded) in cases) {
-            val (value, text, trend) = expected
+        // 새 피그마 「평소 208」: 비교 글자는 변화율이 아니라 기준선 중앙값이다
+        val cases = listOf(215.4 to "215", 190.0 to "190", 200.4 to "200", 208.5 to "209")
+        for ((value, rounded) in cases) {
             val entry = CallTimelineEntry.fromBundle(
                 bundle(features = listOf(feature("SPEECH_RATE", value, "음절/분"))),
                 mapOf("SPEECH_RATE" to baseline("SPEECH_RATE", 200.0, 10.0)),
@@ -99,8 +96,8 @@ class CallTimelineEntryMappingTests {
             assertEquals("말씀 속도", stat.label)
             assertEquals(rounded, stat.value)
             assertEquals("음절/분", stat.unit)
-            assertEquals(text, stat.note?.text)
-            assertEquals(trend, stat.note?.trend)
+            assertEquals("평소 200", stat.note?.text)
+            assertEquals(StatTrend.Flat, stat.note?.trend)
         }
     }
 
@@ -179,14 +176,49 @@ class CallTimelineEntryMappingTests {
         val starts = intArrayOf(0, 86_700, 173_400, 260_100, 346_800, 433_500, 520_200, 606_900, 693_600, 900_000)
         val entry = CallTimelineEntry.fromBundle(bundle(transcript = transcript(*starts)), emptyMap())
         assertEquals(8, entry.keywords.size)
-        assertEquals(listOf("되물음", "되물음"), entry.keywords.mapNotNull { it.label })
-        assertTrue(entry.keywords.drop(2).all { it.label == null })
+        // 되물음 지점은 눈금만 그린다(이름표는 추출된 범주만)
+        assertTrue(entry.keywords.all { it.label == null })
         assertTrue(entry.keywords.all { it.tone == KeywordTone.Caution })
         assertEquals(0.0, entry.keywords[0].position, 1e-12)
         assertEquals(0.1, entry.keywords[1].position, 1e-9)
 
         val beyond = CallTimelineEntry.fromBundle(bundle(transcript = transcript(2_000_000)), emptyMap())
         assertEquals(1.0, beyond.keywords[0].position, 0.0)
+    }
+
+    @Test
+    fun extractedFactsBecomeCategoryLabelsAtTheirEvidenceStart() {
+        val transcript = TranscriptDto(
+            callId = "call-1",
+            excluded = false,
+            parentSpeechSec = 100,
+            segments = listOf(TranscriptSegmentDto("s1", 86_700, 90_000), TranscriptSegmentDto("s2", 433_500, 440_000)),
+            repeatEvents = emptyList(),
+            repeatRequestCount = 0,
+            repeatRequestsPerMinute = 0.0,
+        )
+        val extraction = ExtractionDto(
+            callId = "call-1",
+            parseStatus = "OK",
+            facts = listOf(
+                ExtractionFactDto("sleep", "잠을 못 잤다", "PRESENT", listOf("s2")),
+                ExtractionFactDto("symptom", "허리가 아프다", "PRESENT", listOf("missing", "s1")),
+                ExtractionFactDto("unknown", "x", "PRESENT", listOf("s1")),
+                ExtractionFactDto("medication", "근거 없음", "PRESENT", listOf("missing")),
+            ),
+        )
+        val entry = CallTimelineEntry.fromBundle(bundle(extraction = extraction, transcript = transcript), emptyMap())
+
+        assertEquals(listOf("증상", "수면"), entry.keywords.map { it.label })
+        assertEquals(0.1, entry.keywords[0].position, 1e-9)
+        assertEquals(0.5, entry.keywords[1].position, 1e-9)
+        assertTrue(entry.keywords.all { it.tone == KeywordTone.Neutral })
+    }
+
+    @Test
+    fun usualCallMinutesBecomesTheDurationNote() {
+        val entry = CallTimelineEntry.fromBundle(bundle(), emptyMap(), usualCallMinutes = 12)
+        assertEquals("평소 12분", entry.summaryStats[0].note?.text)
     }
 
     @Test

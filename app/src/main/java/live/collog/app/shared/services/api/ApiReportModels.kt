@@ -166,6 +166,16 @@ data class ExtractionDto(
     val medication: String? = null,
     val activity: String? = null,
     val sleep: String? = null,
+    val facts: List<ExtractionFactDto> = emptyList(),
+)
+
+/** 서버 `ExtractionFact`: 범주별 요약과 근거 구간 번호(타임라인 키워드 줄 위치에 쓴다). */
+@Serializable
+data class ExtractionFactDto(
+    val category: String,
+    val summary: String = "",
+    val polarity: String = "",
+    val evidenceSegmentIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -177,10 +187,18 @@ data class RepeatEventDto(
 )
 
 @Serializable
+data class TranscriptSegmentDto(
+    val segmentId: String,
+    val startMs: Int,
+    val endMs: Int,
+)
+
+@Serializable
 data class TranscriptDto(
     val callId: String,
     val excluded: Boolean,
     val parentSpeechSec: Int,
+    val segments: List<TranscriptSegmentDto> = emptyList(),
     val repeatEvents: List<RepeatEventDto>,
     val repeatRequestCount: Int,
     val repeatRequestsPerMinute: Double,

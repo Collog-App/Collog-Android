@@ -14,17 +14,18 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogIcon
-import live.collog.app.shared.ui.designsystem.CollogType
-import live.collog.app.shared.ui.designsystem.DividerLine
-import live.collog.app.shared.ui.designsystem.IconSize
+import live.collog.app.shared.ui.designsystem.Pretendard
 import live.collog.app.shared.ui.designsystem.Spacing
+import live.collog.app.shared.ui.designsystem.SpecColors
+import live.collog.app.shared.ui.designsystem.SpecDivider
+import live.collog.app.shared.ui.designsystem.specText
 import live.collog.app.shared.ui.pressable
 
-/** iOS `WeekNavigatorView`: 좌우 화살표로 주를 넘기는 막대. */
+/** iOS `WeekNavigatorView`: 좌우 화살표로 주를 넘기는 막대. 새 피그마 05 「주차 이동」: 구분선 없음, 제목 15/700, 기간 12/400. */
 @Composable
 fun WeekNavigator(
     title: String,
@@ -34,26 +35,23 @@ fun WeekNavigator(
     onPrevious: () -> Unit = {},
     onNext: () -> Unit = {},
 ) {
-    Box(modifier.fillMaxWidth().padding(horizontal = Spacing.x5, vertical = Spacing.x2)) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = Spacing.x2),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ArrowButton("chevron.left", enabled = true, onClick = onPrevious)
+    Row(
+        modifier.fillMaxWidth().padding(horizontal = Spacing.x5, vertical = Spacing.x2),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ArrowButton("chevron.left", enabled = true, onClick = onPrevious)
 
-            Spacer(Modifier.weight(1f).widthIn(min = Spacing.x2))
+        Spacer(Modifier.weight(1f).widthIn(min = Spacing.x2))
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(title, style = CollogType.body01Semibold, color = CollogColors.gray900)
-                Text(rangeText, style = CollogType.body03Medium, color = CollogColors.gray800)
-            }
-
-            Spacer(Modifier.weight(1f).widthIn(min = Spacing.x2))
-
-            ArrowButton("chevron.right", enabled = canGoForward, onClick = onNext)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(title, style = specText(Pretendard.Bold, 15f))
+            Text(rangeText, style = specText(Pretendard.Regular, 12f, SpecColors.muted))
         }
-        DividerLine(Modifier.align(Alignment.BottomCenter))
+
+        Spacer(Modifier.weight(1f).widthIn(min = Spacing.x2))
+
+        ArrowButton("chevron.right", enabled = canGoForward, onClick = onNext)
     }
 }
 
@@ -63,29 +61,28 @@ private fun ArrowButton(symbol: String, enabled: Boolean, onClick: () -> Unit) {
         Modifier.size(44.dp).pressable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        CollogIcon(symbol, size = IconSize.medium, color = if (enabled) CollogColors.gray800 else CollogColors.gray400)
+        CollogIcon(symbol, size = 23.dp, color = if (enabled) SpecColors.sub else Color(0xFFD5D9DE))
     }
 }
 
-/** iOS `TimelineWeekHeader`: 타임라인에서 주마다 붙는 머리말. [rangeText]가 있으면 제목 옆에 적는다. */
+/** iOS `TimelineWeekHeader`: 타임라인에서 주마다 붙는 머리말. [rangeText]가 있으면 제목 옆에 적는다. 새 피그마 16/700 + 전폭 구분선. */
 @Composable
 fun TimelineWeekHeader(title: String, modifier: Modifier = Modifier, rangeText: String? = null) {
     Box(modifier.fillMaxWidth().background(CollogColors.gray50)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = Spacing.x5, vertical = Spacing.x4),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.x3),
+            Modifier.fillMaxWidth().padding(start = Spacing.x5, end = Spacing.x5, top = 15.dp, bottom = 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            Text(title, Modifier.alignByBaseline(), style = CollogType.body01Semibold, color = CollogColors.gray900)
+            Text(title, Modifier.alignByBaseline(), style = specText(Pretendard.Bold, 16f))
             if (rangeText != null) {
                 Text(
                     rangeText,
                     Modifier.alignByBaseline(),
-                    style = CollogType.body03Medium,
-                    color = CollogColors.gray700,
+                    style = specText(Pretendard.Regular, 12f, SpecColors.muted),
                 )
             }
         }
-        DividerLine(Modifier.align(Alignment.BottomCenter))
+        SpecDivider(Modifier.align(Alignment.BottomCenter))
     }
 }

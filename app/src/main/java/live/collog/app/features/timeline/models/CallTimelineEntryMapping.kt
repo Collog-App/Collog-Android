@@ -3,14 +3,12 @@ package live.collog.app.features.timeline.models
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import live.collog.app.features.report.models.formatOneDecimal
 import live.collog.app.features.report.models.roundHalfAwayFromZero
 import live.collog.app.shared.components.chart.KeywordMark
 import live.collog.app.shared.components.chart.KeywordTone
 import live.collog.app.shared.components.chart.RangeGauge
 import live.collog.app.shared.components.stat.CallStat
 import live.collog.app.shared.components.stat.StatNote
-import live.collog.app.shared.components.stat.StatTrend
 import live.collog.app.shared.services.api.AcousticFeatureDto
 import live.collog.app.shared.services.api.AcousticFeaturesDto
 import live.collog.app.shared.services.api.ApiFormat
@@ -32,6 +30,7 @@ data class CallAnalysisBundle(
 fun CallTimelineEntry.Companion.fromBundle(
     bundle: CallAnalysisBundle,
     baselines: Map<String, BaselineDto>,
+    usualCallMinutes: Int? = null,
 ): CallTimelineEntry {
     val features = bundle.features?.features ?: emptyList()
     val durationSec = bundle.call.durationSec ?: 0
@@ -39,14 +38,17 @@ fun CallTimelineEntry.Companion.fromBundle(
     val speechRate = features.firstOrNull { it.metric == "SPEECH_RATE" && it.isMeasured }
     val cough = features.firstOrNull { it.metric == "COUGH_EVENTS" && it.isMeasured }
 
-    val stats = mutableListOf(CallStat("통화 길이", "${max(durationSec / 60, 0)}", "분", null))
+    // 새 피그마 「평소 N분」: 최근 통화들의 평균(3건 미만이면 호출하는 쪽이 null 을 준다)
+    val stats = mutableListOf(
+        CallStat("통화 길이", "${max(durationSec / 60, 0)}", "분", usualCallMinutes?.let { StatNote("평소 ${it}분") }),
+    )
     val speechValue = speechRate?.value
     if (speechRate != null && speechValue != null) {
         stats += CallStat(
             "말씀 속도",
             "${roundHalfAwayFromZero(speechValue)}",
             speechRate.unit,
-            note(speechValue, baselines["SPEECH_RATE"]),
+            note(baselines["SPEECH_RATE"]),
         )
     }
 
@@ -64,19 +66,18 @@ fun CallTimelineEntry.Companion.fromBundle(
         durationText = ApiFormat.duration(durationSec),
         summaryStats = stats,
         story = story(bundle.extraction),
-        keywords = keywords(bundle.transcript, durationSec),
+        keywords = keywords(bundle.extraction, bundle.transcript, durationSec),
         gauges = gauges(features, baselines),
         counts = counts,
         callId = bundle.call.callId,
     )
 }
 
-private fun note(value: Double, baseline: BaselineDto?): StatNote? {
+/** 새 피그마 「평소 208」: 준비된 기준선의 중앙값. 기준선이 없으면 비교 글자를 뺀다. */
+private fun note(baseline: BaselineDto?): StatNote? {
     val median = baseline?.median ?: return null
     if (!baseline.isReady || median == 0.0) return null
-    val delta = (value - median) / abs(median) * 100
-    val trend = if (abs(delta) < 1) StatTrend.Flat else if (delta > 0) StatTrend.Up else StatTrend.Down
-    return StatNote("${formatOneDecimal(abs(delta))}%", trend)
+    return StatNote("평소 ${roundHalfAwayFromZero(median)}")
 }
 
 private fun story(extraction: ExtractionDto?): String {
@@ -85,16 +86,26 @@ private fun story(extraction: ExtractionDto?): String {
     return if (lines.isEmpty()) "이번 통화에서는 기록된 건강 이야기가 없었어요." else lines.joinToString("\n")
 }
 
-private fun keywords(transcript: TranscriptDto?, durationSec: Int): List<KeywordMark> {
+private val factLabels = mapOf("symptom" to "증상", "medication" to "복약", "activity" to "활동", "sleep" to "수면")
+
+/**
+ * 키워드 줄: 범주 이름(증상·복약·활동·수면)은 추출 결과의 근거 구간 시작 위치에, 되물음은 그 지점에 눈금으로 그린다.
+ * 서버는 「혈압약」 같은 낱말 키워드나 이상 판정을 주지 않으므로 범주만 쓰고 색으로 판정하지 않는다.
+ */
+private fun keywords(extraction: ExtractionDto?, transcript: TranscriptDto?, durationSec: Int): List<KeywordMark> {
     if (transcript == null || durationSec <= 0) return emptyList()
     val total = (durationSec * 1000).toDouble()
-    return transcript.repeatEvents.take(8).mapIndexed { index, event ->
-        KeywordMark(
-            position = min(max(event.startMs.toDouble() / total, 0.0), 1.0),
-            tone = KeywordTone.Caution,
-            label = if (index < 2) "되물음" else null,
-        )
+    val segmentStarts = transcript.segments.associate { it.segmentId to it.startMs }
+
+    val facts = extraction?.facts.orEmpty().mapNotNull { fact ->
+        val label = factLabels[fact.category] ?: return@mapNotNull null
+        val start = fact.evidenceSegmentIds.firstNotNullOfOrNull { segmentStarts[it] } ?: return@mapNotNull null
+        KeywordMark(min(max(start.toDouble() / total, 0.0), 1.0), KeywordTone.Neutral, label)
     }
+    val repeats = transcript.repeatEvents.take(8).map { event ->
+        KeywordMark(min(max(event.startMs.toDouble() / total, 0.0), 1.0), KeywordTone.Caution, null)
+    }
+    return (facts + repeats).sortedBy { it.position }
 }
 
 private fun gauges(features: List<AcousticFeatureDto>, baselines: Map<String, BaselineDto>): List<RangeGauge> =

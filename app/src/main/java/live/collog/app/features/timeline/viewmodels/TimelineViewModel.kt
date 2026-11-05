@@ -11,13 +11,13 @@ import live.collog.app.config.AppEnvironment
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.report.models.WeeklyReport
 import live.collog.app.features.report.models.fromDto
+import live.collog.app.features.report.models.withCallStats
 import live.collog.app.features.timeline.models.CallAnalysisBundle
 import live.collog.app.features.timeline.models.CallTimelineEntry
 import live.collog.app.features.timeline.models.TimelineWeekPage
 import live.collog.app.features.timeline.models.WeekBounds
+import live.collog.app.features.timeline.models.WeeklySpeechHistory
 import live.collog.app.features.timeline.models.fromBundle
-import live.collog.app.shared.components.chart.TrendSeries
-import live.collog.app.shared.components.chart.from
 import live.collog.app.shared.services.api.BaselineDto
 import live.collog.app.shared.services.api.CallSummaryDto
 import live.collog.app.shared.services.api.CollogApi
@@ -41,6 +41,8 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
     private var pickedSelf = false
 
     private val baselineCache = mutableMapOf<String, Map<String, BaselineDto>>()
+    private val historyCache = mutableMapOf<String, WeeklySpeechHistory>()
+    private val usualMinutesCache = mutableMapOf<String, Int?>()
     private val loading = mutableSetOf<Int>()
     private var contentGeneration = 0
 
@@ -95,7 +97,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         val offsets = if (forceReload) listOf(anchor) else listOf(anchor, anchor - 1, anchor + 1)
         for (offset in offsets) {
             if (offset > 0) continue
-            load(offset, context.parentId, context.api, context.baselines, generation, forceReload)
+            load(offset, context, generation, forceReload)
         }
     }
 
@@ -116,7 +118,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             return
         }
         if (generation != contentGeneration) return
-        load(offset, context.parentId, context.api, context.baselines, generation, forceReload)
+        load(offset, context, generation, forceReload)
     }
 
     private fun setLoadFailure(offset: Int, environment: AppEnvironment) {
@@ -142,7 +144,13 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             )
     }
 
-    private class Context(val parentId: String, val api: CollogApi, val baselines: Map<String, BaselineDto>)
+    private class Context(
+        val parentId: String,
+        val api: CollogApi,
+        val baselines: Map<String, BaselineDto>,
+        val history: WeeklySpeechHistory,
+        val usualCallMinutes: Int?,
+    )
 
     private suspend fun loadContext(environment: AppEnvironment): Context? {
         val parentId = selectedContact(environment)?.userId ?: return null
@@ -156,7 +164,16 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             loaded
         }
 
-        return Context(parentId, api, baselines)
+        val history = historyCache.getOrPut(parentId) { WeeklySpeechHistory(api, parentId, baselines["SPEECH_RATE"]) }
+        val usualMinutes = if (usualMinutesCache.containsKey(parentId)) {
+            usualMinutesCache[parentId]
+        } else {
+            val usual = usualCallMinutes(orNull { api.calls(parentId) } ?: emptyList())
+            usualMinutesCache[parentId] = usual
+            usual
+        }
+
+        return Context(parentId, api, baselines, history, usualMinutes)
     }
 
     private fun resolveSelection(environment: AppEnvironment) {
@@ -200,12 +217,13 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
 
     private suspend fun load(
         offset: Int,
-        parentId: String,
-        api: CollogApi,
-        baselines: Map<String, BaselineDto>,
+        context: Context,
         generation: Int,
         forceReload: Boolean = false,
     ) {
+        val parentId = context.parentId
+        val api = context.api
+        val baselines = context.baselines
         if (generation != contentGeneration) return
         if (offset in loading) return
         if (!forceReload && pages[offset]?.isLoaded == true) return
@@ -218,10 +236,9 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
 
             try {
                 val dto = api.report(parentId, date = TimelineWeekPage.isoDate.format(bounds.anchor))
-                val history = dto.recentAcousticHistory ?: dto.acousticTrends
-                val trend = history
-                    .firstOrNull { it.metric == "SPEECH_RATE" }
-                    ?.let { TrendSeries.from(it, baselines["SPEECH_RATE"]) }
+                // 새 피그마 음향 추세: 최근 6주 주별 평균(통화가 없는 주는 건너뜀)
+                context.history.record(offset, dto)
+                val trend = if (dto.analyzedCallCount > 0) context.history.trend(offset) else null
 
                 page = page.copy(report = WeeklyReport.fromDto(dto, trend))
             } catch (e: CancellationException) {
@@ -231,8 +248,20 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             }
 
             try {
-                val content = entries(parentId, api, baselines, bounds)
-                page = page.copy(calls = content.first, entries = content.second)
+                val content = entries(parentId, api, baselines, bounds, context.usualCallMinutes)
+                val previous = TimelineWeekPage.bounds(offset - 1)
+                val previousCalls = orNull {
+                    api.calls(
+                        parentId,
+                        from = TimelineWeekPage.isoDate.format(previous.start),
+                        to = TimelineWeekPage.isoDate.format(previous.end),
+                    )
+                }
+                page = page.copy(
+                    calls = content.first,
+                    entries = content.second,
+                    report = page.report.withCallStats(content.first, previousCalls),
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -250,6 +279,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         api: CollogApi,
         baselines: Map<String, BaselineDto>,
         bounds: WeekBounds,
+        usualCallMinutes: Int?,
     ): Pair<List<CallSummaryDto>, List<CallTimelineEntry>> {
         val calls = api.calls(
             parentId,
@@ -267,10 +297,19 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
                 val transcript = async { orNull { api.transcript(call.callId) } }
                 CallAnalysisBundle(call, features.await(), extraction.await(), transcript.await())
             }
-            result += CallTimelineEntry.fromBundle(bundle, baselines)
+            result += CallTimelineEntry.fromBundle(bundle, baselines, usualCallMinutes)
         }
 
         return calls to result
+    }
+
+    /** 새 피그마 「평소 N분」: 분석된 최근 통화(최대 10건)의 평균 길이. 3건 미만이면 null. */
+    private fun usualCallMinutes(calls: List<CallSummaryDto>): Int? {
+        val recent = calls.filter { it.isAnalyzed && (it.durationSec ?: 0) > 0 }
+            .sortedByDescending { it.startedAt }
+            .take(10)
+        if (recent.size < 3) return null
+        return Math.round(recent.sumOf { it.durationSec ?: 0 } / recent.size / 60.0).toInt()
     }
 
     /** Swift `try?`: 실패하면 null. 취소는 삼키지 않는다. */

@@ -32,7 +32,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
-import live.collog.app.shared.ui.designsystem.CollogColors
+import live.collog.app.shared.ui.designsystem.SpecColors
 
 /** iOS `SparkBarView`: 막대가 아래에서 차례로 솟는다. 마지막 [highlightCount]개만 초록. */
 @Composable
@@ -58,7 +58,7 @@ fun SparkBar(
                 animationSpec = spring(dampingRatio = 0.8f, stiffness = 157.9f),
                 label = "sparkBar",
             )
-            val color = if (index >= values.size - highlightCount) CollogColors.greenNormal else CollogColors.gray300
+            val color = if (index >= values.size - highlightCount) SpecColors.chartGreen else SpecColors.line
             Box(
                 Modifier
                     .width(barWidth)
@@ -98,7 +98,7 @@ fun SparkLine(values: List<Double>, modifier: Modifier = Modifier, lineWidth: Dp
         measure.getSegment(0f, measure.length * progress.value, trimmed, true)
         drawPath(
             trimmed,
-            CollogColors.greenNormal,
+            SpecColors.chartGreen,
             style = Stroke(lineWidth.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
     }

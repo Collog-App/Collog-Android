@@ -58,7 +58,7 @@ import live.collog.app.features.timeline.views.components.CallTimelineDateHeader
 import live.collog.app.features.timeline.views.components.CallTimelineRail
 import live.collog.app.features.timeline.views.components.TimelineWeekHeader
 import live.collog.app.features.timeline.views.components.WeekNavigator
-import live.collog.app.shared.components.chip.FilterChipLabel
+import live.collog.app.shared.components.spec.SubjectChip
 import live.collog.app.shared.components.emptystate.AnalysisEmptyState
 import live.collog.app.shared.components.emptystate.EmptyState
 import live.collog.app.shared.components.navbar.CollapsingHeaderScrollView
@@ -255,7 +255,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
         ) {
             CallTimelineRail(isLast)
 
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.x3)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 CallTimelineDateHeader(entry)
                 val callId = entry.callId
                 CallTimelineCard(
@@ -311,7 +311,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
         if (subjects.size > 1) {
             var expanded by remember { mutableStateOf(false) }
             Box {
-                FilterChipLabel(viewModel.selectedMember, Modifier.pressable { expanded = true })
+                SubjectChip(viewModel.selectedMember, Modifier.pressable { expanded = true })
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                     subjects.forEach { contact ->
                         DropdownMenuItem(
@@ -330,7 +330,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
                 }
             }
         } else {
-            FilterChipLabel(viewModel.selectedMember)
+            SubjectChip(viewModel.selectedMember)
         }
     }
 
@@ -394,7 +394,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
         onRefresh = { viewModel.refresh(environment, forceReload = true) },
         scrollReset = tabManager.reselectionCount + memberSelectionCount,
         showsScrollToTopButton = tab == MainTab.Timeline,
-        large = { MemberSelector() },
+        trailing = { MemberSelector() },
         sticky = if (tab == MainTab.Timeline) {
             { TimelineWeekHeader(viewModel.page(activeVerticalWeek).title) }
         } else {

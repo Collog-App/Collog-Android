@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,16 +17,13 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import java.util.UUID
-import live.collog.app.shared.ui.designsystem.CollogColors
-import live.collog.app.shared.ui.designsystem.CollogType
-import live.collog.app.shared.ui.designsystem.Radius
-import live.collog.app.shared.ui.designsystem.Spacing
+import live.collog.app.shared.ui.designsystem.Pretendard
+import live.collog.app.shared.ui.designsystem.SpecColors
+import live.collog.app.shared.ui.designsystem.specText
 
 /** iOS `KeywordTone`. */
 enum class KeywordTone {
@@ -38,15 +34,15 @@ enum class KeywordTone {
 
     val tickColor: Color
         get() = when (this) {
-            Neutral -> CollogColors.gray500
-            Positive -> CollogColors.greenNormal
-            Caution -> CollogColors.orange600
-            Concern -> CollogColors.red400
+            Neutral -> SpecColors.tickNeutral
+            Positive -> SpecColors.chartGreen
+            Caution -> SpecColors.orange
+            Concern -> SpecColors.concernTick
         }
 
-    val chipForeground: Color get() = if (this == Concern) CollogColors.red400 else CollogColors.gray800
+    val chipForeground: Color get() = if (this == Concern) SpecColors.concern else SpecColors.sub
 
-    val chipBackground: Color get() = if (this == Concern) CollogColors.red100 else CollogColors.gray100
+    val chipBackground: Color get() = if (this == Concern) SpecColors.concernSurface else SpecColors.tag
 }
 
 /** iOS `KeywordMark`. [position]은 0~1 비율. */
@@ -54,18 +50,18 @@ data class KeywordMark(val position: Double, val tone: KeywordTone, val label: S
     val id: UUID = UUID.randomUUID()
 }
 
-/** iOS `KeywordTimelineView`: 띠 위에 키워드 표시와 말풍선 이름표를 놓는다. */
+/** iOS `KeywordTimelineView`: 띠 위에 키워드 표시와 이름표를 놓는다. 새 피그마 08 「태그 트랙」(높이 15, 눈금 2) 모양. */
 @Composable
 fun KeywordTimeline(marks: List<KeywordMark>, modifier: Modifier = Modifier) {
     val topLabels = marks.filter { it.label != null && it.tone != KeywordTone.Concern }
     val bottomLabels = marks.filter { it.label != null && it.tone == KeywordTone.Concern }
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.x1)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (topLabels.isNotEmpty()) ChipRow(topLabels, pointerBelow = true)
 
-        Canvas(Modifier.fillMaxWidth().height(14.dp)) {
-            drawRoundRect(CollogColors.gray100, size = size, cornerRadius = CornerRadius(2.dp.toPx()))
-            val tickWidth = 3.dp.toPx()
+        Canvas(Modifier.fillMaxWidth().height(15.dp)) {
+            drawRoundRect(SpecColors.track, size = size, cornerRadius = CornerRadius(2.dp.toPx()))
+            val tickWidth = 2.dp.toPx()
             marks.forEach { mark ->
                 val x = (size.width * mark.position.toFloat()).coerceAtLeast(0f).coerceAtMost(maxOf(size.width - tickWidth, 0f))
                 drawRoundRect(
@@ -83,7 +79,7 @@ fun KeywordTimeline(marks: List<KeywordMark>, modifier: Modifier = Modifier) {
 
 @Composable
 private fun ChipRow(items: List<KeywordMark>, pointerBelow: Boolean) {
-    Box(Modifier.fillMaxWidth().height(26.dp)) {
+    Box(Modifier.fillMaxWidth().height(if (pointerBelow) 21.dp else 22.dp)) {
         items.forEach { mark ->
             Column(
                 Modifier.layout { measurable, constraints ->
@@ -103,9 +99,7 @@ private fun ChipRow(items: List<KeywordMark>, pointerBelow: Boolean) {
                 },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (pointerBelow) Chip(mark)
-                Pointer(mark.tone.chipBackground, pointsDown = pointerBelow)
-                if (!pointerBelow) Chip(mark)
+                Chip(mark)
             }
         }
     }
@@ -113,26 +107,12 @@ private fun ChipRow(items: List<KeywordMark>, pointerBelow: Boolean) {
 
 @Composable
 private fun Chip(mark: KeywordMark) {
+    val concern = mark.tone == KeywordTone.Concern
     Text(
         mark.label.orEmpty(),
-        style = CollogType.caption01Semibold,
-        color = mark.tone.chipForeground,
+        style = specText(Pretendard.Medium, 12f, mark.tone.chipForeground),
         modifier = Modifier
-            .background(mark.tone.chipBackground, RoundedCornerShape(Radius.chip))
-            .padding(horizontal = Spacing.x3, vertical = Spacing.x1),
+            .background(mark.tone.chipBackground, RoundedCornerShape(if (concern) 13.dp else 12.dp))
+            .padding(horizontal = if (concern) 20.dp else 12.dp, vertical = if (concern) 4.dp else 3.5.dp),
     )
-}
-
-/** iOS `Triangle`(9x4). 위쪽 변이 넓고 아래로 뾰족하며, 아래 이름표는 180도 뒤집는다. */
-@Composable
-private fun Pointer(color: Color, pointsDown: Boolean) {
-    Canvas(Modifier.size(9.dp, 4.dp).graphicsLayer { rotationZ = if (pointsDown) 0f else 180f }) {
-        val path = Path().apply {
-            moveTo(size.width / 2, size.height)
-            lineTo(0f, 0f)
-            lineTo(size.width, 0f)
-            close()
-        }
-        drawPath(path, color)
-    }
 }
