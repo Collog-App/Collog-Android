@@ -28,9 +28,11 @@ object CallNotifications {
     const val CHANNEL_INCOMING = "incoming_calls"
     const val CHANNEL_ONGOING = "ongoing_calls"
     const val CHANNEL_REPORTS = "reports"
+    const val CHANNEL_CALL_ALERTS = "call_alerts"
 
     const val ID_INCOMING = 1001
     const val ID_ONGOING = 1002
+    const val ID_MICROPHONE = 1003
     private const val ID_REPORT_BASE = 2000
 
     const val ACTION_ANSWER = "live.collog.app.action.ANSWER"
@@ -60,6 +62,9 @@ object CallNotifications {
                     setSound(null, null)
                 },
                 NotificationChannel(CHANNEL_REPORTS, "통화 기록", NotificationManager.IMPORTANCE_HIGH),
+                NotificationChannel(CHANNEL_CALL_ALERTS, "통화 안내", NotificationManager.IMPORTANCE_HIGH).apply {
+                    setSound(null, null)
+                },
             ),
         )
     }
@@ -98,6 +103,33 @@ object CallNotifications {
             .setContentIntent(callActivity(context, ACTION_SHOW_CALL, 4, null))
             .setStyle(NotificationCompat.CallStyle.forOngoingCall(person, broadcast(context, ACTION_HANG_UP, 5, null)))
             .build()
+    }
+
+    /**
+     * 블루투스 이어폰·워치로 받아 앱이 뒤에 있으면 마이크가 무음이 된다. 앱은 뒤에서 화면을 띄울 수 없으므로
+     * (Android 10+ 백그라운드 Activity 시작 제한) 알림을 띄워 사용자가 누르게 한다. 누르면 통화 화면이 열리고
+     * 마이크가 다시 붙는다([CallService.restoreMicrophone]).
+     */
+    fun showMicrophoneNeeded(context: Context) {
+        val show = callActivity(context, ACTION_SHOW_CALL, 6, null)
+        val notification = NotificationCompat.Builder(context, CHANNEL_CALL_ALERTS)
+            .setSmallIcon(R.drawable.ic_stat_collog)
+            .setColor(CollogColors.greenNormal.toArgb())
+            .setContentTitle("마이크가 꺼져 있어요")
+            .setContentText("눌러서 통화 화면을 열면 상대가 목소리를 들을 수 있어요")
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setAutoCancel(true)
+            .setContentIntent(show)
+            .setFullScreenIntent(show, true)
+            .build()
+        post(context, ID_MICROPHONE, notification)
+    }
+
+    fun cancelMicrophoneNeeded(context: Context) {
+        NotificationManagerCompat.from(context).cancel(ID_MICROPHONE)
     }
 
     /**

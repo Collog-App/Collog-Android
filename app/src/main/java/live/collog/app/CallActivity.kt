@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.first
 import live.collog.app.config.LocalAppEnvironment
 import live.collog.app.features.call.services.CallNotifications
+import live.collog.app.features.call.services.CallService
 import live.collog.app.features.call.services.LocalCallCenter
 import live.collog.app.features.call.views.ActiveCallScreen
 import live.collog.app.features.call.views.CallErrorAlert
@@ -72,6 +73,12 @@ class CallActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         app.permissions.attach(this) { permissionLauncher.launch(it) }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 블루투스·워치로 받아 마이크 없이 시작된 통화면, 화면이 보이는 지금 마이크를 다시 붙인다.
+        CallService.restoreMicrophone(this)
     }
 
     override fun onStop() {
