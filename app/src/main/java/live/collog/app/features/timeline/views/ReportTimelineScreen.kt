@@ -219,6 +219,15 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
 
     @Composable
     fun EmptyAnalysisContent(page: TimelineWeekPage) {
+        // "나"를 골랐는데 기록이 없으면 전화·초대를 권하지 않는다(가족이 없을 때만 아래 초대 안내)
+        if (viewModel.selectedContactId == TimelineViewModel.SelfContactId && contacts.isNotEmpty()) {
+            EmptyState(
+                symbol = "doc.text.magnifyingglass",
+                title = "아직 분석된 내 통화가 없어요.",
+                message = "가족과 통화하고 분석이 끝나면 내 기록이 여기에 보여요.",
+            )
+            return
+        }
         AnalysisEmptyState(
             onStartCall = { contact ->
                 val userId = contact.userId ?: return@AnalysisEmptyState
