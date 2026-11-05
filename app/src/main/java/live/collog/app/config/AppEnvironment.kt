@@ -27,6 +27,9 @@ class AppEnvironment(
     var reportNotificationRevision by mutableIntStateOf(0)
     /** RootScreen이 마지막으로 연 리포트 알림 번호. 첫 화면을 그리기 전에 온 알림(꺼진 앱에서 누름)도 열려고 둔다. */
     var openedReportNotificationRevision = 0
+    /** 마지막으로 누른 리포트 알림의 통화. RootScreen이 리포트 탭 위에 그 통화의 분석 화면을 연다. */
+    var openedReportCallId: String? = null
+        private set
     var reportNotifications by mutableStateOf<List<ReceivedReportNotification>>(emptyList())
         private set
 
@@ -67,7 +70,10 @@ class AppEnvironment(
             reportNotifications = listOf(ReceivedReportNotification(callId, title, message, Instant.now())) +
                 reportNotifications
         }
-        if (openReport) reportNotificationRevision += 1
+        if (openReport) {
+            openedReportCallId = callId
+            reportNotificationRevision += 1
+        }
     }
 }
 

@@ -67,6 +67,7 @@ import live.collog.app.features.call.views.CallScreen
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.home.views.HomeScreen
 import live.collog.app.features.settings.views.SettingsScreen
+import live.collog.app.features.timeline.views.CallAnalysisRoute
 import live.collog.app.features.timeline.views.ReportTimelineScreen
 import live.collog.app.shared.components.tabbar.BottomNavBar
 import live.collog.app.shared.navigation.LocalNavigationManager
@@ -168,6 +169,8 @@ fun RootScreen() {
         if (revision == environment.openedReportNotificationRevision) return@LaunchedEffect
         environment.openedReportNotificationRevision = revision
         navigation.popToRoot(MainTab.Report)
+        // 알림의 통화 분석 화면을 리포트 탭 위에 연다. 통화 번호가 없으면 리포트 탭만 연다.
+        environment.openedReportCallId?.let { navigation.manager(MainTab.Report).push(CallAnalysisRoute(it)) }
         tabManager.selectedTab = MainTab.Report
     }
 
