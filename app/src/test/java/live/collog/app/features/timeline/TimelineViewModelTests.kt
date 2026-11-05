@@ -300,6 +300,7 @@ class TimelineViewModelTests {
         assertTrue(page.isLoaded)
         assertNotNull(page.reportError)
         assertEquals(page.reportError, page.timelineError)
-        assertEquals("Tester", model.selectedMember)
+        // 다른 화면처럼 닉네임이 있으면 닉네임(계정 이름 Tester 가 아니라)
+        assertEquals("테스터", model.selectedMember)
     }
 }

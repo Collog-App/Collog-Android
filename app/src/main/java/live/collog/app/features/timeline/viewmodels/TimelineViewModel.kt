@@ -161,7 +161,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
                 loading.clear()
                 contentGeneration += 1
             }
-            selectedMember = environment.session.user?.name ?: selectedMember
+            selectedMember = environment.session.user?.let { it.nickname ?: it.name } ?: selectedMember
             return
         }
         if (selectedContactId != contact.id) {
