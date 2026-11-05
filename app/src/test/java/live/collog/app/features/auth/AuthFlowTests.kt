@@ -46,10 +46,21 @@ class AuthFlowTests {
     }
 
     @Test
-    fun signedOutStartsAtOnboarding() = withFixture { fixture ->
+    fun signedOutStartsAtIntro() = withFixture { fixture ->
         fixture.environment.session.signOut()
-        assertEquals(Step.Onboarding, resolved(fixture))
+        assertEquals(Step.Intro, resolved(fixture))
         assertTrue(fixture.paths.isEmpty())
+    }
+
+    @Test
+    fun introStartGoesToLoginAndBackReturnsToIntro() = withFixture { fixture ->
+        fixture.environment.session.signOut()
+        val model = AuthFlowViewModel()
+        model.resolve(fixture.environment)
+        model.advance(Step.Onboarding)
+        assertEquals(Step.Onboarding, model.step)
+        model.advance(Step.Intro)
+        assertEquals(Step.Intro, model.step)
     }
 
     @Test

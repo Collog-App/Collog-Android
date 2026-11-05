@@ -8,11 +8,11 @@ import live.collog.app.config.AppEnvironment
 import live.collog.app.shared.services.api.ConsentRecordDto
 
 /**
- * 피그마 「최종본」 가입 흐름: 온보딩(로그인) → 약관 → (PASS, 꺼 둠) → 가입 정보 → 나의 질환 → 홈.
+ * 피그마 「최종본」 가입 흐름: 시작 장(새 피그마 19) → 온보딩(로그인) → 약관 → (PASS, 꺼 둠) → 가입 정보 → 나의 질환 → 홈.
  * 역할 구분 없이 모두 같은 길로 간다. 이미 가입한 사람은 동의가 낡았을 때만 약관을 다시 본다.
  */
 class AuthFlowViewModel {
-    enum class Step { Launching, Onboarding, Terms, Pass, SignUp, Conditions, Ready }
+    enum class Step { Launching, Intro, Onboarding, Terms, Pass, SignUp, Conditions, Ready }
 
     var step by mutableStateOf(Step.Launching)
         private set
@@ -28,7 +28,7 @@ class AuthFlowViewModel {
         }
         val user = environment.session.user
         if (!environment.session.isAuthenticated || user == null) {
-            step = Step.Onboarding
+            step = Step.Intro
             return
         }
 

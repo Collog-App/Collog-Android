@@ -43,6 +43,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import live.collog.app.config.LocalAppEnvironment
 import live.collog.app.features.auth.viewmodels.AuthFlowViewModel
+import live.collog.app.features.auth.views.IntroScreen
 import live.collog.app.features.auth.views.OnboardingScreen
 import live.collog.app.features.auth.views.PASS_ENABLED
 import live.collog.app.features.auth.views.PassVerificationScreen
@@ -180,13 +181,18 @@ fun RootScreen() {
             Crossfade(authFlow.step, animationSpec = tween(200), label = "auth") { step ->
                 when (step) {
                     AuthFlowViewModel.Step.Launching -> Box(Modifier.fillMaxSize().background(CollogColors.gray50))
-                    AuthFlowViewModel.Step.Onboarding -> OnboardingScreen {
-                        callCenter.registerDeviceIfPossible()
-                        if (environment.session.isAuthenticated) {
-                            callCenter.updateNotificationAuthorization()
-                            callCenter.prepareCallPermissions()
+                    AuthFlowViewModel.Step.Intro -> IntroScreen { authFlow.advance(AuthFlowViewModel.Step.Onboarding) }
+                    AuthFlowViewModel.Step.Onboarding -> {
+                        // 로그인 화면에서 뒤로 가면 시작 장으로 돌아간다(로그인 화면의 장 넘김 뒤로 가기가 먼저 받는다)
+                        BackHandler { authFlow.advance(AuthFlowViewModel.Step.Intro) }
+                        OnboardingScreen {
+                            callCenter.registerDeviceIfPossible()
+                            if (environment.session.isAuthenticated) {
+                                callCenter.updateNotificationAuthorization()
+                                callCenter.prepareCallPermissions()
+                            }
+                            resolve()
                         }
-                        resolve()
                     }
                     AuthFlowViewModel.Step.Terms -> TermsScreen {
                         if (PASS_ENABLED) authFlow.advance(AuthFlowViewModel.Step.Pass) else resolve()
@@ -295,7 +301,7 @@ private fun MainTabs(
             Crossfade(tab to environment.reportNotificationRevision, animationSpec = tween(180), label = "tab") { (shown, _) ->
                 CompositionLocalProvider(LocalNavigationManager provides navigation.manager(shown)) {
                     when (shown) {
-                        MainTab.Home -> HomeScreen(onStartCall)
+                        MainTab.Home -> HomeScreen()
                         MainTab.Report -> ReportTimelineScreen(initialTabIndex = 0)
                         MainTab.Timeline -> ReportTimelineScreen(initialTabIndex = 1)
                         MainTab.Settings -> SettingsScreen()

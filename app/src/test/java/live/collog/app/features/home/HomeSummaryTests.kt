@@ -9,13 +9,11 @@ import live.collog.app.features.home.models.FamilyHealthSummary
 import live.collog.app.features.home.models.HealthFeedback
 import live.collog.app.features.home.models.fromDto
 import live.collog.app.features.home.viewmodels.HomeViewModel
-import live.collog.app.features.home.views.callDateText
-import live.collog.app.features.home.views.callDurationText
-import live.collog.app.features.home.views.callTimeText
 import live.collog.app.features.home.views.changeRate
 import live.collog.app.features.home.views.fixed1
 import live.collog.app.features.home.views.formatNotificationTime
 import live.collog.app.features.home.views.interpretation
+import live.collog.app.features.home.views.lastCallSentence
 import live.collog.app.features.home.views.signedPercent1
 import live.collog.app.shared.components.chart.TrendSeries
 import live.collog.app.shared.components.chart.from
@@ -242,14 +240,12 @@ class HomeSummaryTests {
     }
 
     @Test
-    fun callLogTextUsesKoreanDateAndDuration() {
-        val seoul = ZoneId.of("Asia/Seoul")
-        val at = Instant.parse("2026-10-27T06:12:00Z") // 서울 10-27 15:12
-        assertEquals("10월 27일 화요일", callDateText(at, seoul))
-        assertEquals("오후 3:12", callTimeText(at, seoul))
-        assertEquals("12분 4초", callDurationText(724))
-        assertEquals("1분 0초", callDurationText(60))
-        assertEquals("45초", callDurationText(45))
+    fun homeLastCallSentenceFollowsLoadingState() {
+        val now = Instant.now()
+        assertEquals("오늘 통화했어요", lastCallSentence(now, isLoaded = true))
+        assertEquals("3일 전 통화했어요", lastCallSentence(now.minusSeconds(3 * 86_400L + 60), isLoaded = true))
+        assertEquals("아직 통화 기록이 없어요", lastCallSentence(null, isLoaded = true))
+        assertNull(lastCallSentence(null, isLoaded = false))
     }
 
     @Test

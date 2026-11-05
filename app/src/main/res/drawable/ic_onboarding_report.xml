@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 새 피그마 「디자인」 643:6941 아이콘(exportSvg 변환) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="28"
+    android:viewportHeight="28">
+    <path
+        android:pathData="M3.45496 4.60645V23.0331H24.185"
+        android:strokeColor="#FFA6D9BB"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M7.48584 16.6994L11.5167 12.6686L14.9717 16.1236L20.73 10.3652"
+        android:strokeColor="#FF3E9A62"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
