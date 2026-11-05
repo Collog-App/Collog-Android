@@ -89,6 +89,20 @@ fun CallCenter.toggleSpeaker() {
     }
 }
 
+/**
+ * 통화로 보내는 마이크 설정. 잡음 제거는 서버 값과 상관없이 켠다: 기기(하드웨어) 잡음 제거를 끈 채
+ * ([AndroidCallPlatform.createRoom]) WebRTC 소프트웨어 잡음 제거만 쓰면 전송 단계에서만 걸리고,
+ * 분석 PCM([AnalysisPcmWriter], `LocalAudioTrack.addSink`)은 그 앞의 `AudioRecord` 원본을 받는다.
+ * 그래서 상대에게는 주변 소리가 줄어든 목소리가, 음향 분석에는 원음이 간다. 나머지는 서버 값을 따른다.
+ */
+internal fun callCaptureOptions(constraints: AudioConstraints) = LocalAudioTrackOptions(
+    noiseSuppression = true,
+    echoCancellation = constraints.echoCancellation,
+    autoGainControl = constraints.autoGainControl,
+    highPassFilter = false,
+    typingNoiseDetection = false,
+)
+
 internal suspend fun CallCenter.connectMedia(
     callId: String,
     url: String,
@@ -100,16 +114,10 @@ internal suspend fun CallCenter.connectMedia(
     val room = platform.createRoom(managedAudio = call.uuid in systemCalls)
     this.room?.release()
     this.room = room
-    if (constraints.autoGainControl || constraints.noiseSuppression) {
-        log("경고: 서버가 AGC/NS를 켜서 보냈다. 음향 분석 신뢰도가 떨어진다")
+    if (constraints.autoGainControl) {
+        log("경고: 서버가 AGC를 켜서 보냈다. 음향 분석 신뢰도가 떨어진다")
     }
-    val capture = LocalAudioTrackOptions(
-        noiseSuppression = constraints.noiseSuppression,
-        echoCancellation = constraints.echoCancellation,
-        autoGainControl = constraints.autoGainControl,
-        highPassFilter = false,
-        typingNoiseDetection = false,
-    )
+    val capture = callCaptureOptions(constraints)
     pendingCapture = capture
     room.audioTrackCaptureDefaults = capture
     roomEventsJob?.cancel()

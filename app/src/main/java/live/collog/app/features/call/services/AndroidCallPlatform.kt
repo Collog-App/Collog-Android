@@ -78,7 +78,12 @@ class AndroidCallPlatform(
         LiveKit.create(
             context,
             overrides = LiveKitOverrides(
-                audioOptions = AudioOptions(audioHandler = if (managedAudio) NoAudioHandler() else null),
+                audioOptions = AudioOptions(
+                    audioHandler = if (managedAudio) NoAudioHandler() else null,
+                    // 기기 잡음 제거는 AudioRecord 원본(= 분석 PCM)부터 바꾼다. 끄면 WebRTC 가 소프트웨어 잡음
+                    // 제거로 대신해 통화로 보내는 소리에만 건다(callCaptureOptions).
+                    javaAudioDeviceModuleCustomizer = { it.setUseHardwareNoiseSuppressor(false) },
+                ),
             ),
         )
 
