@@ -2,6 +2,8 @@ package live.collog.app.features.timeline.views
 
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -23,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +62,7 @@ import live.collog.app.shared.components.chip.FilterChipLabel
 import live.collog.app.shared.components.emptystate.AnalysisEmptyState
 import live.collog.app.shared.components.emptystate.EmptyState
 import live.collog.app.shared.components.navbar.CollapsingHeaderScrollView
+import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.navigation.LocalTabManager
 import live.collog.app.shared.navigation.MainTab
 import live.collog.app.shared.ui.Haptics
@@ -77,11 +82,34 @@ private val ActiveWeekThreshold = 56.dp // 머리말 막대(52dp) 바로 아래
 /**
  * iOS `ReportTimelineView`: 리포트 탭([initialTabIndex] 0)과 타임라인 탭(1)이 함께 쓰는 화면.
  * 리포트는 주 단위로 가로로 넘기고, 타임라인은 주를 세로로 이어 붙인다.
+ * HomeScreen처럼 탭 루트는 그려 둔 채(스크롤·불러온 주 유지) 밀어 넣은 통화 분석 화면을 그 위에 덮어 그린다.
  */
 @Composable
 fun ReportTimelineScreen(initialTabIndex: Int = 1) {
+    val navigation = LocalNavigationManager.current
+    Box(Modifier.fillMaxSize()) {
+        ReportTimelineRoot(initialTabIndex)
+
+        val route = navigation.path.lastOrNull() as? CallAnalysisRoute
+        if (route != null) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(CollogColors.gray00)
+                    // 아래 탭 화면으로 터치가 새지 않게 막는다
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+            ) {
+                key(route) { CallAnalysisScreen(route.callId) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportTimelineRoot(initialTabIndex: Int) {
     val environment = LocalAppEnvironment.current
     val tabManager = LocalTabManager.current
+    val navigation = LocalNavigationManager.current
     val callCenter = LocalCallCenter.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -218,7 +246,11 @@ fun ReportTimelineScreen(initialTabIndex: Int = 1) {
 
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.x3)) {
                 CallTimelineDateHeader(entry)
-                CallTimelineCard(entry)
+                val callId = entry.callId
+                CallTimelineCard(
+                    entry,
+                    if (callId == null) Modifier else Modifier.pressable { navigation.push(CallAnalysisRoute(callId)) },
+                )
 
                 if (!isLast) Spacer(Modifier.height(Spacing.x3))
             }

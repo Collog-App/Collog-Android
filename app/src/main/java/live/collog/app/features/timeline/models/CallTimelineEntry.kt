@@ -18,6 +18,8 @@ data class CallTimelineEntry(
     val keywords: List<KeywordMark>,
     val gauges: List<RangeGauge>,
     val counts: List<CallStat>,
+    /** 서버 통화 번호. 누르면 통화 분석 화면을 연다. 체험 모드 견본은 null이라 누를 수 없다. */
+    val callId: String? = null,
 ) {
     val id: UUID = UUID.randomUUID()
 

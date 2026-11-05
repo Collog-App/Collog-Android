@@ -144,7 +144,7 @@ object CallNotifications {
         NotificationManagerCompat.from(context).cancel(ID_INCOMING)
     }
 
-    /** iOS 리포트 푸시(`report.callId`)의 대응. 누르면 리포트 탭을 연다. */
+    /** iOS 리포트 푸시(`report.callId`)의 대응. 누르면 리포트 탭 위에 그 통화의 분석 화면을 연다. */
     fun showReport(context: Context, callId: String, title: String, message: String) {
         val intent = Intent(context, MainActivity::class.java)
             .setAction(ACTION_OPEN_REPORT)

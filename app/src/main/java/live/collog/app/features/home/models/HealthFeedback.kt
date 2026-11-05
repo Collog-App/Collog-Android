@@ -21,7 +21,8 @@ data class HealthFeedback(
     val title: String get() = "다음 통화에서 물어보기"
 
     companion object {
-        private val topics = listOf(
+        /** (대화 항목 키, 이름, 다음 통화 질문). 통화 분석 화면의 권장 사항도 같은 질문을 쓴다. */
+        internal val topics = listOf(
             Triple("symptom", "몸 상태", "최근 통화에서 나눈 몸 상태 이야기는 요즘 어때요?"),
             Triple("medication", "복약", "최근 통화에서 나눈 약 이야기에서 더 알려주실 내용이 있어요?"),
             Triple("activity", "활동", "최근 통화에서 나눈 활동 이야기에서 달라진 점이 있어요?"),

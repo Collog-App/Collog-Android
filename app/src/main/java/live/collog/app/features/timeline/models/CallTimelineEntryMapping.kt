@@ -67,6 +67,7 @@ fun CallTimelineEntry.Companion.fromBundle(
         keywords = keywords(bundle.transcript, durationSec),
         gauges = gauges(features, baselines),
         counts = counts,
+        callId = bundle.call.callId,
     )
 }
 

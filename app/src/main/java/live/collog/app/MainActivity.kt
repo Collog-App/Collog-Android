@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 리포트 알림을 누르면 리포트 탭을 연다. 이 Activity는 런처라 외부 앱도 열 수 있으므로
+     * 리포트 알림을 누르면 리포트 탭 위에 그 통화의 분석 화면을 연다(RootScreen). 이 Activity는 런처라 외부 앱도 열 수 있으므로
      * 인텐트의 제목·본문은 믿지 않고 서버가 보내는 고정 문구를 쓴다.
      */
     private fun handleReportIntent(intent: Intent?) {
