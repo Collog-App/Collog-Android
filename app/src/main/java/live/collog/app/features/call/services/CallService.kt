@@ -37,7 +37,7 @@ class CallService : Service() {
             CallNotifications.cancelMicrophoneNeeded(this)
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
-        } else if (!microphone || !appVisible()) {
+        } else if (!microphone || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !appVisible())) {
             microphoneMissing = true
             Log.i("Collog", "마이크가 꺼진 통화예요. 통화 화면을 열도록 알려요")
             CallNotifications.showMicrophoneNeeded(this)
@@ -73,7 +73,7 @@ class CallService : Service() {
         }
     }
 
-    /** 화면이 보이는 앱이어야 마이크를 쓸 수 있다(포그라운드 서비스만으로는 안 됨). */
+    /** Android 11+ 에서는 화면이 보이는 앱이어야 마이크를 쓸 수 있다(포그라운드 서비스만으로는 안 됨). */
     private fun appVisible(): Boolean {
         val state = ActivityManager.RunningAppProcessInfo()
         ActivityManager.getMyMemoryState(state)
