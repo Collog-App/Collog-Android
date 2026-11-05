@@ -293,7 +293,7 @@ class HomeSummaryTests {
 
         val withBaseline = TrendSeries.from(data, baseline())!!
         assertEquals(
-            "말씀 속도은 평소 범위 안에 있어요. 첫 기록보다 10.5% 높아졌어요.",
+            "말씀 속도는 평소 범위 안에 있어요. 첫 기록보다 10.5% 높아졌어요.",
             interpretation(withBaseline),
         )
     }

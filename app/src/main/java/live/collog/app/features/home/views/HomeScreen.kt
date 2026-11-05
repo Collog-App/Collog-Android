@@ -104,7 +104,13 @@ fun HomeScreen(onStartCall: (FamilyContact) -> Unit) {
             ) {
                 when (route) {
                     Route.FamilyHealthOverview -> viewModel.healthSummary?.let { FamilyHealthOverviewScreen(it) }
-                    Route.HealthFeedbackDetail -> viewModel.healthFeedback?.let { HealthFeedbackDetailScreen(it) }
+                    Route.HealthFeedbackDetail -> viewModel.healthFeedback?.let { feedback ->
+                        val contact = LocalAppEnvironment.current.family.selectedContact
+                        HealthFeedbackDetailScreen(
+                            feedback,
+                            lastCallText = contact?.let { viewModel.lastCallAt[it.id] }?.let { HomeViewModel.lastCallDayText(it) },
+                        )
+                    }
                     Route.Notifications -> HomeNotificationsScreen()
                 }
             }

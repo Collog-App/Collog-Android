@@ -20,8 +20,9 @@ import androidx.compose.ui.unit.dp
 import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogIcon
-import live.collog.app.shared.ui.designsystem.CollogType
+import live.collog.app.shared.ui.designsystem.Pretendard
 import live.collog.app.shared.ui.designsystem.Spacing
+import live.collog.app.shared.ui.designsystem.specText
 import live.collog.app.shared.ui.pressable
 
 /** iOS `HomeDetailHeader`: 뒤로 버튼과 가운데 제목. 뒤로는 현재 탭의 화면 스택에서 한 장 빼낸다. */
@@ -44,10 +45,10 @@ fun HomeDetailHeader(title: String, modifier: Modifier = Modifier) {
                 .pressable { navigation.pop() },
             contentAlignment = Alignment.Center,
         ) {
-            CollogIcon("chevron.left", size = 20.dp, color = CollogColors.gray900)
+            CollogIcon("chevron.left", size = 24.dp, color = CollogColors.gray900)
         }
         FlexibleSpace()
-        Text(title, style = CollogType.body01Semibold, color = CollogColors.gray900)
+        Text(title, style = specText(Pretendard.Medium, 20f))
         FlexibleSpace()
         Spacer(Modifier.size(40.dp))
     }
