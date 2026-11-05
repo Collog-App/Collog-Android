@@ -25,10 +25,10 @@ data class CallAnalysis(
     val acoustic: String,
     val recommendation: String,
 ) {
-    /** 분석 대상 이름: 가족 목록에서 찾고, 내가 분석 대상이면 내 이름. 못 찾으면 "가족". */
+    /** 분석 대상 이름: 가족 목록에서 찾고, 내가 분석 대상이면 내 닉네임(없으면 계정 이름). 못 찾으면 "가족". */
     fun subjectName(contacts: List<FamilyContact>, me: ApiUser?): String =
         contacts.firstOrNull { it.userId == subjectId }?.name
-            ?: me?.takeIf { it.id == subjectId }?.name
+            ?: me?.takeIf { it.id == subjectId }?.let { it.nickname?.takeIf(String::isNotBlank) ?: it.name }
             ?: "가족"
 
     companion object

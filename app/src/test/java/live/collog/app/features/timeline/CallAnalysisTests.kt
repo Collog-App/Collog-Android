@@ -151,6 +151,8 @@ class CallAnalysisTests {
         assertEquals("김영희", item.subjectName(listOf(mom), me))
         assertEquals("나", item.subjectName(emptyList(), me))
         assertEquals("가족", item.subjectName(emptyList(), me.copy(id = "other")))
+        // 다른 화면처럼 닉네임이 있으면 닉네임
+        assertEquals("Emul1", item.subjectName(emptyList(), me.copy(nickname = "Emul1")))
     }
 
     private fun withFixture(body: suspend (TestEnvironment) -> Unit) = runTest {
