@@ -45,7 +45,7 @@ class CallLauncherModel(
     private var didActivateByHold = false
     private var latestDragVector = Offset.Zero
 
-    val arcRadius = 122f
+    val arcRadius = 117f
 
     fun configure(targets: List<FamilyContact>, questions: List<String>) {
         this.targets = targets

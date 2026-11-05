@@ -18,6 +18,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +33,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -66,10 +71,13 @@ import live.collog.app.features.call.viewmodels.CallLauncherModel
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogType
+import live.collog.app.shared.ui.designsystem.Pretendard
+import live.collog.app.shared.ui.designsystem.SpecColors
+import live.collog.app.shared.ui.designsystem.specText
 import live.collog.app.shared.ui.designsystem.Spacing
 
 private const val INNER_RADIUS = 34f
-private const val OUTER_RADIUS = 178f
+private const val OUTER_RADIUS = 177f
 private const val FAN_SIZE = 356f
 
 /** iOS `CallLauncherOverlay`. 전화 버튼 위로 펼쳐지는 가족 선택 부채꼴과 오늘의 질문 칩. */
@@ -86,15 +94,25 @@ fun CallLauncherOverlay(
     LaunchedEffect(Unit) { appear.animateTo(1f, responseSpring(0.32f, 0.82f)) }
 
     Box(Modifier.fillMaxSize().alpha(appear.value.coerceIn(0f, 1f))) {
-        // 흐림 효과 대신 거의 불투명한 흰 막
+        // 새 피그마 10~12: 거의 불투명한 `#f2f3f3` 막 + 아래 420dp 초록 글로우(투명 `#cfebd9` → 95% `#c4e8d2`)
         Box(
             Modifier
                 .fillMaxSize()
-                .background(CollogColors.gray00.copy(alpha = 0.92f))
+                .background(SpecColors.launcherScrim)
                 .pointerInput(Unit) { detectTapGestures { onDismiss() } },
         )
-
-        AmbientGradient()
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(420.dp)
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color(0xFFCFEBD9).copy(alpha = 0f),
+                        1f to Color(0xFFC4E8D2).copy(alpha = 0.95f),
+                    ),
+                ),
+        )
 
         if (notice != null) {
             Box(
@@ -106,6 +124,14 @@ fun CallLauncherOverlay(
             ) { Hint(notice) }
         }
 
+        // 질문 묶음: 위 제목 18dp 부터 전화 버튼 중심 위 316dp 까지(피그마 10: 제목 맨 위가 버튼 중심 위 530dp)
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = anchorInset + navigationInset + 316.dp)
+                .padding(horizontal = 42.dp),
+        ) { QuestionStack(model) }
+
         // 전화 버튼 중심을 기준점으로 삼는 크기 0 상자
         Box(
             Modifier
@@ -114,84 +140,29 @@ fun CallLauncherOverlay(
                 .size(0.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Box(
-                Modifier
-                    .wrapContentSize(Alignment.Center, unbounded = true)
-                    .size(600.dp)
-                    .background(
-                        Brush.radialGradient(
-                            0f to CollogColors.greenNormal.copy(alpha = 0.14f),
-                            1f to CollogColors.greenNormal.copy(alpha = 0f),
-                        ),
-                        CircleShape,
-                    ),
-            )
-            QuestionStack(model)
             TargetFan(model, appear.value, onSelect)
         }
     }
 }
 
-@Composable
-private fun AmbientGradient() {
-    val transition = rememberInfiniteTransition(label = "ambient")
-    val phase by transition.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(3800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "ambientPhase",
-    )
-    Box(
-        Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                rotationZ = -5f + 12f * phase
-                val s = 0.96f + 0.10f * phase
-                scaleX = s
-                scaleY = s
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Glow(360.dp, CollogColors.greenNormal.copy(alpha = 0.14f), (-120).dp, 160.dp)
-        Glow(300.dp, CollogColors.greenLightActive.copy(alpha = 0.24f), 140.dp, (-100).dp)
-    }
-}
-
-/** iOS의 블러 처리된 원을 방사형 그라데이션으로 대신한다. */
-@Composable
-private fun Glow(size: Dp, color: Color, x: Dp, y: Dp) {
-    Box(
-        Modifier
-            .offset(x, y)
-            .wrapContentSize(Alignment.Center, unbounded = true)
-            .size(size)
-            .background(Brush.radialGradient(0f to color, 1f to color.copy(alpha = 0f)), CircleShape),
-    )
-}
-
+/** 새 피그마 10 「안내 문구」(18/400 muted) 아래 32dp 간격으로 질문 말풍선 최대 3개(간격 17dp). 높이는 3개 기준 고정해 위가 흔들리지 않게 한다. */
 @Composable
 private fun QuestionStack(model: CallLauncherModel) {
     Column(
-        Modifier
-            .wrapContentSize(Alignment.Center, unbounded = true)
-            .width(300.dp)
-            .offset(y = -(model.arcRadius + 245).dp),
+        Modifier.fillMaxWidth().height(214.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (model.targets.isEmpty()) {
+            Spacer(Modifier.height(60.dp))
             Hint("설정에서 통화할 가족을 등록해주세요")
         } else if (model.questions.isEmpty()) {
+            Spacer(Modifier.height(60.dp))
             Hint("오늘의 질문이 아직 없어요")
         } else {
-            Text(
-                "이 질문으로 시작해보세요",
-                style = CollogType.caption01Medium,
-                color = CollogColors.gray700,
-                modifier = Modifier.padding(start = Spacing.x2),
-            )
+            Text("이 질문으로 시작해보세요", style = specText(Pretendard.Regular, 18f, SpecColors.muted))
             Column(
-                Modifier.padding(top = Spacing.x4),
-                verticalArrangement = Arrangement.spacedBy(Spacing.x2),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                Modifier.padding(top = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(17.dp),
             ) {
                 model.questions.take(3).forEachIndexed { index, question ->
                     QuestionChip(question, index)
@@ -201,6 +172,7 @@ private fun QuestionStack(model: CallLauncherModel) {
     }
 }
 
+/** 새 피그마 「질문 말풍선」: 흰 바탕 둥글기 15.4, 번호 14/700 초록, 질문 15.4/500, 그림자(0,2.8 / 반경 11 / 8%). */
 @Composable
 private fun QuestionChip(text: String, index: Int) {
     var shown by remember { mutableStateOf(false) }
@@ -209,39 +181,33 @@ private fun QuestionChip(text: String, index: Int) {
         shown = true
     }
     val progress by animateFloatAsState(if (shown) 1f else 0f, responseSpring(0.34f, 0.78f), label = "chip")
-
-    val transition = rememberInfiniteTransition(label = "chipFloat")
-    val float by transition.animateFloat(
-        -3f, 3f,
-        infiniteRepeatable(tween(2700 + index * 320, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "chipFloatValue",
-    )
+    val shape = RoundedCornerShape(15.dp)
 
     Row(
         Modifier
+            .fillMaxWidth()
             .graphicsLayer {
                 alpha = progress.coerceIn(0f, 1f)
-                translationY = (1f - progress) * 40.dp.toPx() + float.dp.toPx()
+                translationY = (1f - progress) * 40.dp.toPx()
             }
             .shadow(
-                6.dp, CircleShape,
-                ambientColor = Color.Black.copy(alpha = 0.06f),
-                spotColor = Color.Black.copy(alpha = 0.06f),
+                6.dp, shape,
+                ambientColor = Color.Black.copy(alpha = 0.08f),
+                spotColor = Color.Black.copy(alpha = 0.08f),
             )
-            .background(CollogColors.gray00, CircleShape)
-            .padding(horizontal = Spacing.x3, vertical = Spacing.x2),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.x2),
+            .background(Color.White, shape)
+            .heightIn(min = 42.dp)
+            .padding(horizontal = 19.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("%02d".format(index + 1), style = CollogType.caption01Semibold, color = CollogColors.green700)
+        Text("%02d".format(index + 1), style = specText(Pretendard.Bold, 14f, SpecColors.green))
         Text(
             text,
-            style = CollogType.body03Medium,
-            color = CollogColors.gray900,
+            style = specText(Pretendard.Medium, 15.4f),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Start,
-            modifier = Modifier.weight(1f, fill = false),
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -261,7 +227,6 @@ private fun Hint(text: String) {
 
 @Composable
 private fun TargetFan(model: CallLauncherModel, appear: Float, onSelect: (Int) -> Unit) {
-    val fanAlpha by animateFloatAsState(if (model.mode == CallLauncherModel.Mode.Dragging) 1f else 0.78f, label = "fanAlpha")
     val density = LocalDensity.current
     val isSticky = model.mode == CallLauncherModel.Mode.Sticky
 
@@ -271,7 +236,7 @@ private fun TargetFan(model: CallLauncherModel, appear: Float, onSelect: (Int) -
             .size(FAN_SIZE.dp),
         contentAlignment = Alignment.Center,
     ) {
-        // 부채꼴 영역: 모양이 다각형이라 눌린 위치를 각도·반지름으로 직접 판정한다
+        // 반원 다이얼: 눌린 위치를 각도·반지름으로 직접 판정한다
         Box(
             Modifier
                 .fillMaxSize()
@@ -279,8 +244,8 @@ private fun TargetFan(model: CallLauncherModel, appear: Float, onSelect: (Int) -
                     val s = 0.82f + 0.18f * appear
                     scaleX = s
                     scaleY = s
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                    alpha = fanAlpha * appear.coerceIn(0f, 1f)
+                    transformOrigin = TransformOrigin(0.5f, 0.5f)
+                    alpha = appear.coerceIn(0f, 1f)
                 }
                 .pointerInput(isSticky, model.targets.size) {
                     if (!isSticky) return@pointerInput
@@ -295,10 +260,7 @@ private fun TargetFan(model: CallLauncherModel, appear: Float, onSelect: (Int) -
                     }
                 },
         ) {
-            model.targets.indices.forEach { index ->
-                val range = model.angleRange(index)
-                FanSectorView(range.start, range.endInclusive, model.focusedIndex == index)
-            }
+            Dial(model)
         }
 
         model.targets.forEachIndexed { index, contact ->
@@ -307,20 +269,32 @@ private fun TargetFan(model: CallLauncherModel, appear: Float, onSelect: (Int) -
     }
 }
 
+/**
+ * 새 피그마 「다이얼 반원」: 반지름 177, 흰 30% 면 + 1.2dp 흰 테두리(아래 평평한 선 포함), 칸 사이 1.1dp 흰 구분선.
+ * 11·12(어머니·아버지 선택)는 면이 한 겹 더 겹쳐 더 하얗게 보이므로, 눌려 고른 칸에 흰 30% 를 한 겹 더 깐다.
+ */
 @Composable
-private fun FanSectorView(start: Double, end: Double, isFocused: Boolean) {
-    val scale by animateFloatAsState(if (isFocused) 1.025f else 1f, responseSpring(0.2f, 0.88f), label = "sectorScale")
+private fun Dial(model: CallLauncherModel) {
+    val count = model.targets.size
+    val focused = model.focusedIndex
     Canvas(Modifier.fillMaxSize()) {
-        val path = sectorPath(center, INNER_RADIUS * density, OUTER_RADIUS * density, start, end)
-        drawScale(scale, pivot = Offset(size.width / 2, size.height)) {
-            drawPath(
-                path,
-                if (isFocused) CollogColors.greenLightActive.copy(alpha = 0.28f) else CollogColors.gray00.copy(alpha = 0.16f),
-            )
-            drawPath(
-                path,
-                CollogColors.gray00.copy(alpha = if (isFocused) 0.42f else 0.28f),
-                style = Stroke(0.75.dp.toPx()),
+        val radius = OUTER_RADIUS * density
+        val topLeft = Offset(center.x - radius, center.y - radius)
+        val arcSize = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
+        val white = Color.White
+        drawArc(white.copy(alpha = 0.3f), 180f, 180f, true, topLeft, arcSize)
+        if (focused != null && focused in 0 until count) {
+            val range = model.angleRange(focused)
+            drawPath(sectorPath(center, 0f, radius, range.start, range.endInclusive), white.copy(alpha = 0.3f))
+        }
+        drawArc(white, 180f, 180f, true, topLeft, arcSize, style = Stroke(1.2.dp.toPx()))
+        for (i in 1 until count) {
+            val r = Math.toRadians(-180.0 + 180.0 * i / count)
+            drawLine(
+                white,
+                center,
+                Offset(center.x + (cos(r) * radius).toFloat(), center.y + (sin(r) * radius).toFloat()),
+                1.1.dp.toPx(),
             )
         }
     }
@@ -386,27 +360,19 @@ private fun TargetBubble(
                 },
             ),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Spacing.x1),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        val glow = Color.Black.copy(alpha = if (isFocused) 0.12f else 0.07f)
+        val glow = Color(0xFF4DB273).copy(alpha = 0.25f)
         Box(
             Modifier
-                .size(56.dp)
+                .size(55.dp)
                 .scale(focusScale)
-                .shadow(if (isFocused) 6.dp else 4.dp, CircleShape, ambientColor = glow, spotColor = glow)
-                .background(CollogColors.avatarGradient, CircleShape)
-                .then(
-                    if (isFocused) {
-                        Modifier.border(1.5.dp, CollogColors.greenNormal.copy(alpha = 0.55f), CircleShape)
-                    } else {
-                        Modifier
-                    },
+                .shadow(4.dp, CircleShape, ambientColor = glow, spotColor = glow)
+                .background(
+                    Brush.linearGradient(listOf(Color(0xFFE1F3A6), Color(0xFF7ED3A0))),
+                    CircleShape,
                 ),
         )
-        Text(
-            contact.name,
-            style = CollogType.caption01Semibold,
-            color = if (isFocused) CollogColors.gray900 else CollogColors.gray800,
-        )
+        Text(contact.name, style = specText(Pretendard.Medium, 14f, Color(0xFF59606A)), maxLines = 1)
     }
 }

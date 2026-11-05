@@ -49,10 +49,10 @@ class CallLauncherModelTests {
     @Test
     fun offsetsSitOnArcCentre() {
         val m = model()
-        assertEquals(-86.27f, m.offset(0).x, 0.05f)
-        assertEquals(-86.27f, m.offset(0).y, 0.05f)
-        assertEquals(86.27f, m.offset(1).x, 0.05f)
-        assertEquals(-86.27f, m.offset(1).y, 0.05f)
+        assertEquals(-82.73f, m.offset(0).x, 0.05f)
+        assertEquals(-82.73f, m.offset(0).y, 0.05f)
+        assertEquals(82.73f, m.offset(1).x, 0.05f)
+        assertEquals(-82.73f, m.offset(1).y, 0.05f)
     }
 
     @Test
