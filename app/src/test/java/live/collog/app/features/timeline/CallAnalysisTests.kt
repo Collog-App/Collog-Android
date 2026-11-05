@@ -38,6 +38,9 @@ class CallAnalysisTests {
     private fun cough(value: Double?, status: String = "OK") =
         AcousticFeatureDto(metric = "COUGH_EVENTS", value = value, unit = "회", status = status)
 
+    private fun speech(value: Double?, status: String = "OK") =
+        AcousticFeatureDto(metric = "SPEECH_RATE", value = value, unit = "음절/분", status = status)
+
     private fun extraction(
         symptom: String? = null,
         medication: String? = null,
@@ -67,18 +70,26 @@ class CallAnalysisTests {
         assertEquals("기침을 총 5번 하셨어요", analysis(listOf(cough(5.0))).acoustic)
         // 타임라인 카드와 같이 반올림한다
         assertEquals("기침을 총 3번 하셨어요", analysis(listOf(cough(2.5))).acoustic)
-        assertEquals("이번 통화에서는 기침을 하지 않으셨어요", analysis(listOf(cough(0.0))).acoustic)
+        assertEquals("이번 통화에서는 기침이 없었어요", analysis(listOf(cough(0.0))).acoustic)
+        assertEquals(
+            "기침을 총 5번 하셨어요\n말씀 속도는 분당 210음절이었어요",
+            analysis(listOf(speech(209.6), cough(5.0))).acoustic,
+        )
     }
 
     @Test
-    fun coughLineSaysWhenItWasNotMeasured() {
-        // 서버는 기침 감지기 검증 전까지 값 없이 UNMEASURABLE 로 보낸다
+    fun acousticShowsOnlyMeasuredMetrics() {
+        // 서버는 기침 감지기 검증 전까지 값 없이 UNMEASURABLE 로 보낸다 → 기침 줄을 빼고 잰 값만
         assertEquals(
-            "이번 통화에서는 기침 횟수를 재지 못했어요",
-            analysis(listOf(cough(null, status = "UNMEASURABLE"))).acoustic,
+            "말씀 속도는 분당 210음절이었어요",
+            analysis(listOf(cough(null, status = "UNMEASURABLE"), speech(210.0))).acoustic,
         )
-        assertEquals("이번 통화에서는 기침 횟수를 재지 못했어요", analysis(emptyList()).acoustic)
-        assertEquals("아직 계산된 음향 지표가 없어요", analysis(features = null).acoustic)
+        assertEquals(
+            "이번 통화에서는 계산된 음향 지표가 없어요",
+            analysis(listOf(cough(null, status = "UNMEASURABLE"), speech(null, status = "UNMEASURABLE"))).acoustic,
+        )
+        assertEquals("이번 통화에서는 계산된 음향 지표가 없어요", analysis(emptyList()).acoustic)
+        assertEquals("이번 통화에서는 계산된 음향 지표가 없어요", analysis(features = null).acoustic)
     }
 
     @Test
@@ -92,12 +103,12 @@ class CallAnalysisTests {
     @Test
     fun recommendationAsksTheFirstExtractedTopicsQuestion() {
         assertEquals(
-            "다음 통화에서 '최근 통화에서 나눈 약 이야기에서 더 알려주실 내용이 있어요?'라고 여쭤보세요.",
+            "다음 통화에서 \"최근 통화에서 나눈 약 이야기에서 더 알려주실 내용이 있어요?\" 하고 물어보세요.",
             analysis(extraction = extraction(medication = "혈압약", sleep = "잠")).recommendation,
         )
         // 빈 항목은 건너뛴다
         assertEquals(
-            "다음 통화에서 '최근 통화에서 나눈 수면 이야기는 요즘 어때요?'라고 여쭤보세요.",
+            "다음 통화에서 \"최근 통화에서 나눈 수면 이야기는 요즘 어때요?\" 하고 물어보세요.",
             analysis(extraction = extraction(symptom = "  ", sleep = "잠")).recommendation,
         )
         assertEquals(

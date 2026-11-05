@@ -69,12 +69,19 @@ fun CallAnalysis.Companion.fromBundle(
     )
 }
 
+/** 잰 값만 적는다(타임라인 카드처럼). 기침 감지기가 꺼진 서버에서는 기침 줄이 없다. */
 private fun acoustic(features: AcousticFeaturesDto?): String {
-    if (features == null) return "아직 계산된 음향 지표가 없어요"
-    val cough = features.features.firstOrNull { it.metric == "COUGH_EVENTS" && it.isMeasured }?.value
-        ?: return "이번 통화에서는 기침 횟수를 재지 못했어요"
-    val count = roundHalfAwayFromZero(cough)
-    return if (count == 0L) "이번 통화에서는 기침을 하지 않으셨어요" else "기침을 총 ${count}번 하셨어요"
+    val measured = features?.features.orEmpty().filter { it.isMeasured }
+    val lines = buildList {
+        measured.firstOrNull { it.metric == "COUGH_EVENTS" }?.value?.let { cough ->
+            val count = roundHalfAwayFromZero(cough)
+            add(if (count == 0L) "이번 통화에서는 기침이 없었어요" else "기침을 총 ${count}번 하셨어요")
+        }
+        measured.firstOrNull { it.metric == "SPEECH_RATE" }?.value?.let { rate ->
+            add("말씀 속도는 분당 ${roundHalfAwayFromZero(rate)}음절이었어요")
+        }
+    }
+    return lines.joinToString("\n").ifEmpty { "이번 통화에서는 계산된 음향 지표가 없어요" }
 }
 
 /** 홈 「다음 통화에서 물어보기」([HealthFeedback.topics])처럼 처음 나온 대화 항목의 질문을 권한다. */
@@ -83,7 +90,7 @@ private fun recommendation(extraction: ExtractionDto?): String {
         .firstOrNull { (key, _, _) -> !extraction?.item(key).isNullOrBlank() }
         ?.third
         ?: return "다음 통화에서는 요즘 일상을 편하게 이야기해보세요."
-    return "다음 통화에서 '$question'라고 여쭤보세요."
+    return "다음 통화에서 \"$question\" 하고 물어보세요."
 }
 
 private fun ExtractionDto.item(key: String): String? = when (key) {
