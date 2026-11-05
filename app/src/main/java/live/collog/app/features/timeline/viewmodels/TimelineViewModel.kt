@@ -22,7 +22,7 @@ import live.collog.app.shared.services.api.BaselineDto
 import live.collog.app.shared.services.api.CallSummaryDto
 import live.collog.app.shared.services.api.CollogApi
 
-/** iOS `TimelineViewModel`: 주 단위 페이지(리포트와 통화 기록)를 가족 구성원별로 불러온다. */
+/** iOS `TimelineViewModel`: 주 단위 페이지(리포트와 통화 기록)를 가족 구성원별로(나도 포함) 불러온다. */
 class TimelineViewModel(selectedTabIndex: Int = 1) {
     var selectedTabIndex by mutableIntStateOf(selectedTabIndex)
 
@@ -36,6 +36,9 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         private set
     var weekOffset by mutableIntStateOf(0)
         private set
+
+    /** 칩에서 "나"를 직접 골랐는지. 가족이 없어 대신 고른 "나"는 가족 목록이 오면 첫 가족으로 돌아간다. */
+    private var pickedSelf = false
 
     private val baselineCache = mutableMapOf<String, Map<String, BaselineDto>>()
     private val loading = mutableSetOf<Int>()
@@ -54,9 +57,14 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         weekOffset = offset
     }
 
+    /** 리포트·타임라인에서 고를 사람: 가족(지금 순서) 뒤에 "나". 통화 상대(`FamilyStore.contacts`)에는 넣지 않는다. */
+    fun subjects(environment: AppEnvironment): List<FamilyContact> =
+        environment.family.contacts + listOfNotNull(self(environment))
+
     fun selectMember(contact: FamilyContact) {
         if (selectedContactId == contact.id) return
         selectedContactId = contact.id
+        pickedSelf = contact.id == SelfContactId
         selectedMember = contact.name
         selectedRelation = contact.relation
         weekOffset = 0
@@ -176,7 +184,18 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
 
     private fun selectedContact(environment: AppEnvironment): FamilyContact? {
         val contacts = environment.family.contacts
+        val self = self(environment)
+        if (pickedSelf && self != null) return self
         return contacts.firstOrNull { it.id == selectedContactId } ?: contacts.firstOrNull()
+            // 가족이 없으면 나를 본다. 가족 목록을 못 불러온 때는 그 오류를 보인다
+            ?: self?.takeIf { environment.family.loadError == null }
+    }
+
+    /** 분석 대상으로서의 나(`/parents/{내 id}/...`). 둘러보기에는 없다. */
+    private fun self(environment: AppEnvironment): FamilyContact? {
+        if (environment.settings.isGuestMode) return null
+        val user = environment.session.user ?: return null
+        return FamilyContact(id = SelfContactId, userId = user.id, name = "나", relation = "", lastCallText = "")
     }
 
     private suspend fun load(
@@ -261,5 +280,10 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         throw e
     } catch (e: Exception) {
         null
+    }
+
+    companion object {
+        /** "나" 항목의 id. 가족 구성원 id(UUID)와 겹치지 않는다. 탭은 사용자마다 새로 그려지므로 고정값이어도 된다. */
+        const val SelfContactId = "self"
     }
 }

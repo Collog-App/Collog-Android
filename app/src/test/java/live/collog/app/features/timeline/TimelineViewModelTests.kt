@@ -288,6 +288,93 @@ class TimelineViewModelTests {
     }
 
     @Test
+    fun subjectsAreFamilyThenMeWithoutTouchingCallContacts() = withFixture { fixture ->
+        serve(fixture)
+        val model = TimelineViewModel()
+        val subjects = model.subjects(fixture.environment)
+        assertEquals(listOf("m1", TimelineViewModel.SelfContactId), subjects.map { it.id })
+        assertEquals(listOf("엄마", "나"), subjects.map { it.name })
+        assertEquals("me", subjects.last().userId)
+        // 통화 상대(홈·전화 걸기)에는 내가 없다
+        assertEquals(listOf("m1"), fixture.environment.family.contacts.map { it.id })
+
+        // 처음 고르는 사람은 그대로 첫 가족
+        model.refresh(fixture.environment)
+        assertEquals("m1", model.selectedContactId)
+        assertEquals("엄마", model.selectedMember)
+    }
+
+    @Test
+    fun selectingMeLoadsMyOwnRecordsAndStaysSelected() = withFixture { fixture ->
+        serve(fixture)
+        val model = TimelineViewModel()
+        model.loadPage(0, fixture.environment)
+        fixture.paths.clear()
+
+        model.selectMember(model.subjects(fixture.environment).last())
+        assertEquals("나", model.selectedMember)
+        model.refresh(fixture.environment)
+        assertTrue(fixture.paths.isNotEmpty())
+        assertTrue(fixture.paths.all { it.startsWith("/v1/parents/me/") || it.startsWith("/v1/calls/") })
+        assertEquals(TimelineViewModel.SelfContactId, model.selectedContactId)
+        assertEquals(1, model.page(0).entries.size)
+
+        // 가족 목록이 다시 와도 직접 고른 나는 그대로
+        fixture.environment.family.refresh(fixture.environment)
+        fixture.requests.clear()
+        model.refresh(fixture.environment, forceReload = true)
+        assertEquals("나", model.selectedMember)
+        assertEquals("me", fixture.requests.last { it.path().endsWith("/calls") }.path().split("/")[3])
+    }
+
+    @Test
+    fun withoutFamilyMeIsTheOnlySubjectAndSelected() = runTest {
+        val fixture = TestEnvironment(familyId = null)
+        try {
+            serve(fixture)
+            assertTrue(fixture.environment.family.contacts.isEmpty())
+            val model = TimelineViewModel()
+            assertEquals(listOf(TimelineViewModel.SelfContactId), model.subjects(fixture.environment).map { it.id })
+
+            model.refresh(fixture.environment)
+            assertEquals(TimelineViewModel.SelfContactId, model.selectedContactId)
+            assertEquals("나", model.selectedMember)
+            assertTrue(fixture.paths.all { it.startsWith("/v1/parents/me/") || it.startsWith("/v1/calls/") })
+            val page = model.page(0)
+            assertTrue(page.isLoaded)
+            assertNull(page.reportError)
+            assertEquals(1, page.entries.size)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun meShownBeforeFamilyArrivesGivesWayToFirstFamilyMember() = withFixture { fixture ->
+        serve(fixture)
+        fixture.environment.family.reset()
+        val model = TimelineViewModel()
+        // 가족 목록보다 먼저 그려진 경우: 나를 대신 본다
+        model.refresh(fixture.environment)
+        assertEquals("나", model.selectedMember)
+
+        fixture.environment.family.refresh(fixture.environment)
+        model.refresh(fixture.environment)
+        assertEquals("m1", model.selectedContactId)
+        assertEquals("엄마", model.selectedMember)
+        assertEquals("mom", fixture.requests.last { it.path().endsWith("/calls") }.path().split("/")[3])
+        assertEquals(1, model.page(0).entries.size)
+    }
+
+    @Test
+    fun guestSubjectsHaveNoMe() = withFixture { fixture ->
+        fixture.environment.settings.isGuestMode = true
+        fixture.environment.family.refresh(fixture.environment)
+        val model = TimelineViewModel()
+        assertEquals(FamilyContact.samples, model.subjects(fixture.environment))
+    }
+
+    @Test
     fun missingFamilyContactShowsFamilyLoadError() = withFixture(role = "PARENT") { fixture ->
         fixture.respond = { 503 to "{}" }
         fixture.environment.family.refresh(fixture.environment)

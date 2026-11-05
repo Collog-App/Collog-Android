@@ -123,6 +123,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
     var memberSelectionCount by remember { mutableIntStateOf(0) }
 
     val contacts = environment.family.contacts
+    val subjects = viewModel.subjects(environment)
     val thresholdPx = with(density) { WindowInsets.statusBars.getTop(this) + ActiveWeekThreshold.toPx() }
     val currentOffsetPage = PageOffsets.lastIndex
 
@@ -227,6 +228,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
                 environment.family.refresh(environment)
                 viewModel.loadPage(page.offset, environment, forceReload = true)
             },
+            // 통화 상대 목록에서만 찾는다: "나"를 고르면 null 이라 전화 걸기를 권하지 않는다
             contact = contacts.firstOrNull { it.id == viewModel.selectedContactId },
             calls = page.calls,
             isCurrentWeek = page.offset == 0,
@@ -297,12 +299,12 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
 
     @Composable
     fun MemberSelector() {
-        if (contacts.size > 1) {
+        if (subjects.size > 1) {
             var expanded by remember { mutableStateOf(false) }
             Box {
                 FilterChipLabel(viewModel.selectedMember, Modifier.pressable { expanded = true })
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    contacts.forEach { contact ->
+                    subjects.forEach { contact ->
                         DropdownMenuItem(
                             text = { Text(contact.name, style = CollogType.body02Medium, color = CollogColors.gray900) },
                             leadingIcon = if (contact.id == viewModel.selectedContactId) {
