@@ -35,7 +35,7 @@ fun CallCenter.updateQuestionVoicePreference() {
     speakQuestionsIfReady()
 }
 
-/** 거는 쪽이 울리는 동안: 질문 음성 안내가 켜져 있으면 질문을 읽고, 그 뒤(꺼져 있으면 처음부터) 연결음을 낸다. */
+/** 거는 쪽이 울리는 동안: 연결음을 내고, 질문 음성 안내가 켜져 있으면 사이사이 질문을 읽는다. */
 internal fun CallCenter.speakQuestionsIfReady() {
     val call = activeCall ?: return
     if (call.direction != CallCenter.Direction.Outgoing || call.phase != CallPhase.Ringing) return

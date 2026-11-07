@@ -2,10 +2,13 @@ package live.collog.app.features.call
 
 import java.io.ByteArrayOutputStream
 import java.util.Base64
+import kotlin.math.PI
+import kotlin.math.sin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.runBlocking
 import live.collog.app.features.call.services.ElevenLabsStream
+import live.collog.app.features.call.services.RingbackTone
 import live.collog.app.features.call.services.downloadQuestionAudio
 import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.QuestionTtsToken
@@ -33,6 +36,23 @@ class RingingQuestionSpeakerTests {
         modelId = "eleven_flash_v2_5",
         outputFormat = "mp3_44100_128",
     )
+
+    @Test
+    fun ringbackIsTheKoreanToneForOneSecond() {
+        val samples = RingbackTone.samples()
+        val expected = RingbackTone.AMPLITUDE * Short.MAX_VALUE
+
+        assertEquals(RingbackTone.SAMPLE_RATE, samples.size)
+        assertEquals(expected, strength(samples, 440), expected * 0.05)
+        assertEquals(expected, strength(samples, 480), expected * 0.05)
+        // 안드로이드 기본값(kr → 유럽식 425Hz)이 아니어야 한다
+        assertEquals(0.0, strength(samples, 425), expected * 0.05)
+        assertEquals(0, samples.first().toInt())
+        assertEquals(0, samples.last().toInt())
+    }
+
+    private fun strength(samples: ShortArray, hertz: Int): Double =
+        2.0 / samples.size * samples.indices.sumOf { samples[it] * sin(2 * PI * hertz * it / samples.size) }
 
     @Test
     fun streamUrlCarriesTokenAndKoreanLanguageRule() {

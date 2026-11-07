@@ -2,9 +2,9 @@ package live.collog.app.features.call.services
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioManager
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.media.MediaPlayer
-import android.media.ToneGenerator
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import java.io.ByteArrayOutputStream
@@ -16,14 +16,16 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resumeWithException
+import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.currentCoroutineContext
@@ -55,8 +57,8 @@ import okhttp3.WebSocketListener
 import okio.ByteString
 
 /**
- * iOS `RingingQuestionSpeaker`. 통화가 울리는 동안 오늘의 질문을 통화 음성 경로로 읽어 주고,
- * 다 읽은 뒤에는 상대가 받거나 끊을 때까지 연결음을 낸다(안드로이드에서 더한 것).
+ * iOS `RingingQuestionSpeaker`. 통화가 울리는 동안 오늘의 질문을 통화 음성 경로로 읽어 준다.
+ * 걸자마자 상대가 받거나 끊을 때까지 연결음을 내고, 질문을 읽을 때만 멈춘다(연결음은 안드로이드에서 더한 것).
  * 메인 스레드에서 부른다.
  */
 class RingingQuestionSpeaker(context: Context, private val http: OkHttpClient) {
@@ -88,11 +90,17 @@ class RingingQuestionSpeaker(context: Context, private val http: OkHttpClient) {
         stop()
         val generation = generation
         task = scope.launch {
+            val ringback = ringbackTrack(onEvent)
             try {
                 for (question in questions) {
                     if (!isActive || this@RingingQuestionSpeaker.generation !== generation) return@launch
                     try {
-                        speakQuestion(question, callId, api, onEvent)
+                        // 음성을 받는 동안 연결음을 낸다. 한 번을 다 울린 뒤에 읽어 연결음이 중간에 잘리지 않게 한다.
+                        val audio = async { prepareAudio(question, callId, api, onEvent) }
+                        do {
+                            ringOnce(ringback)
+                        } while (!audio.isCompleted)
+                        speakQuestion(question, audio.await(), onEvent)
                         delay(QUESTION_GAP_MILLIS)
                     } catch (error: Exception) {
                         ensureActive()
@@ -100,10 +108,10 @@ class RingingQuestionSpeaker(context: Context, private val http: OkHttpClient) {
                         break
                     }
                 }
-                if (!isActive || this@RingingQuestionSpeaker.generation !== generation) return@launch
-                // 질문이 끝난 뒤 조용하면 상대가 받았는지 알 수 없다. 받거나 끊을 때(stop)까지 연결음을 낸다.
-                playRingback(onEvent)
+                // 조용하면 상대가 받았는지 알 수 없다. 받거나 끊을 때(stop)까지 연결음을 낸다.
+                while (true) ringOnce(ringback)
             } finally {
+                ringback?.release()
                 if (this@RingingQuestionSpeaker.generation === generation) {
                     task = null
                     releaseTextToSpeech()
@@ -123,40 +131,67 @@ class RingingQuestionSpeaker(context: Context, private val http: OkHttpClient) {
         releaseTextToSpeech()
     }
 
-    /** 통화 음성 경로로 연결음을 반복한다. 작업이 취소될 때(stop) 멈춘다. */
-    private suspend fun playRingback(onEvent: (String) -> Unit) {
-        val tone = try {
-            ToneGenerator(AudioManager.STREAM_VOICE_CALL, RINGBACK_VOLUME)
-        } catch (error: RuntimeException) {
-            onEvent("연결음을 낼 수 없어요: ${error.message}")
-            return
-        }
-        try {
-            tone.startTone(ToneGenerator.TONE_SUP_RINGTONE)
-            onEvent("연결음 재생")
-            awaitCancellation()
-        } finally {
-            tone.stopTone()
-            tone.release()
+    /** 통화 음성 경로로 연결음을 낼 트랙을 만든다. 못 만들면 연결음 없이 질문만 읽는다. */
+    private fun ringbackTrack(onEvent: (String) -> Unit): AudioTrack? = try {
+        val samples = RingbackTone.samples()
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(attributes)
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(RingbackTone.SAMPLE_RATE)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build(),
+            )
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .setBufferSizeInBytes(samples.size * Short.SIZE_BYTES)
+            .build()
+        track.write(samples, 0, samples.size)
+        check(track.state == AudioTrack.STATE_INITIALIZED) { "트랙 상태 ${track.state}" }
+        onEvent("연결음 재생")
+        track
+    } catch (error: RuntimeException) {
+        onEvent("연결음을 낼 수 없어요: ${error.message}")
+        null
+    }
+
+    /** 연결음을 한 번 울리고 다음 차례까지 쉰다. 트랙이 없으면 쉬기만 한다. */
+    private suspend fun ringOnce(track: AudioTrack?) {
+        track?.reloadStaticData()
+        track?.play()
+        delay(RingbackTone.CYCLE_MILLIS / 2)
+        track?.stop()
+        delay(RingbackTone.CYCLE_MILLIS / 2)
+    }
+
+    /** 읽기 전에 음성을 받아 둔다. 기기 음성으로 읽어야 하면 null. */
+    private suspend fun prepareAudio(question: ApiQuestion, callId: String, api: CollogApi, onEvent: (String) -> Unit): ByteArray? {
+        if (!question.usesRemoteAudio && question.ttsMode != "ELEVENLABS_DIRECT") return null
+        return try {
+            if (question.ttsMode == "ELEVENLABS_DIRECT") {
+                val token = api.questionTtsToken(callId, question.id)
+                currentCoroutineContext().ensureActive()
+                receiveAudio(question.text, token)
+            } else {
+                currentCoroutineContext().ensureActive()
+                downloadQuestionAudio(downloadHttp, question.ttsAssetUrl)
+            }
+        } catch (error: Exception) {
+            // 우리 작업이 취소됐을 때만 끝낸다. 토큰 갱신 취소처럼 밖에서 온 취소는 iOS처럼 기기 음성으로 넘긴다.
+            currentCoroutineContext().ensureActive()
+            onEvent("질문 음성 다운로드 또는 재생 실패, 기기 음성으로 재생해요")
+            null
         }
     }
 
-    private suspend fun speakQuestion(question: ApiQuestion, callId: String, api: CollogApi, onEvent: (String) -> Unit) {
-        if (!question.usesRemoteAudio && question.ttsMode != "ELEVENLABS_DIRECT") {
+    private suspend fun speakQuestion(question: ApiQuestion, audio: ByteArray?, onEvent: (String) -> Unit) {
+        if (audio == null) {
             speakLocal(question.text)
             return
         }
         try {
-            if (question.ttsMode == "ELEVENLABS_DIRECT") {
-                val token = api.questionTtsToken(callId, question.id)
-                currentCoroutineContext().ensureActive()
-                playAudio(receiveAudio(question.text, token))
-            } else {
-                currentCoroutineContext().ensureActive()
-                playAudio(downloadQuestionAudio(downloadHttp, question.ttsAssetUrl))
-            }
+            playAudio(audio)
         } catch (error: Exception) {
-            // 우리 작업이 취소됐을 때만 끝낸다. 토큰 갱신 취소처럼 밖에서 온 취소는 iOS처럼 기기 음성으로 넘긴다.
             currentCoroutineContext().ensureActive()
             onEvent("질문 음성 다운로드 또는 재생 실패, 기기 음성으로 재생해요")
             speakLocal(question.text)
@@ -321,8 +356,25 @@ class RingingQuestionSpeaker(context: Context, private val http: OkHttpClient) {
         const val DOWNLOAD_TIMEOUT_SECONDS = 8L
         const val AUDIO_DIRECTORY = "ringing-question-audio"
         const val NORMAL_CLOSURE = 1000
-        /** ToneGenerator 음량(0~100, 통화 음량 기준 비율). */
-        const val RINGBACK_VOLUME = 80
+    }
+}
+
+/**
+ * 한국 통화 연결음 한 번: 440+480Hz 1초, 2초 쉬고 반복.
+ * 안드로이드 ToneGenerator엔 한국 톤이 없어(kr은 유럽식 425Hz 1초·4초로 나간다) 직접 만든다.
+ */
+internal object RingbackTone {
+    const val SAMPLE_RATE = 16_000
+    const val CYCLE_MILLIS = 3_000L
+    const val AMPLITUDE = 0.1
+    private const val FADE_SAMPLES = 160
+
+    fun samples(): ShortArray = ShortArray(SAMPLE_RATE) { index ->
+        val time = index.toDouble() / SAMPLE_RATE
+        // 앞뒤 10ms를 줄여 틱 소리를 막는다
+        val fade = min(1.0, min(index, SAMPLE_RATE - 1 - index).toDouble() / FADE_SAMPLES)
+        val wave = sin(2 * PI * 440 * time) + sin(2 * PI * 480 * time)
+        (wave * AMPLITUDE * fade * Short.MAX_VALUE).toInt().toShort()
     }
 }
 
