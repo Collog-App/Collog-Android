@@ -35,6 +35,7 @@ data class HealthRecords(
 /**
  * 건강 앱 연결 약속(2026-11-08) 「동기화」 규칙으로 하루 요약을 만든다. 날짜는 모두 Asia/Seoul.
  * 서버 범위 검사를 벗어난 값은 그 칸만 null 로 둔다(한 칸 때문에 요청 전체가 422 로 거절되지 않게).
+ * 혈압·혈당은 범위 안 측정값 중 그날 마지막 것을 고른다.
  */
 object HealthDailyCalculator {
     val zone: ZoneId = ZoneId.of("Asia/Seoul")
@@ -78,9 +79,10 @@ object HealthDailyCalculator {
 
     fun summary(day: LocalDate, records: HealthRecords): HealthDayDto {
         val sessions = sessionsFor(day, records.sleepSessions)
-        val pressure = records.bloodPressures.filter { dayOf(it.time) == day }.maxByOrNull { it.time }
-            ?.let { reading -> bloodPressure(reading.systolic, reading.diastolic) }
-        val glucose = records.bloodGlucoses.filter { dayOf(it.time) == day }.maxByOrNull { it.time }
+        val pressure = records.bloodPressures.filter { dayOf(it.time) == day }.sortedByDescending { it.time }
+            .firstNotNullOfOrNull { reading -> bloodPressure(reading.systolic, reading.diastolic) }
+        val glucose = records.bloodGlucoses.filter { dayOf(it.time) == day }.sortedByDescending { it.time }
+            .firstNotNullOfOrNull { reading -> milligramsPerDeciliter(reading.millimolesPerLiter).takeIf { it in 20.0..600.0 } }
         return HealthDayDto(
             date = day.toString(),
             sleepMinutes = sleepMinutes(sessions),
@@ -88,17 +90,20 @@ object HealthDailyCalculator {
             restingHeartRate = restingHeartRate(day, sessions, records),
             bloodPressureSystolic = pressure?.first,
             bloodPressureDiastolic = pressure?.second,
-            bloodGlucoseMgDl = glucose?.let { milligramsPerDeciliter(it.millimolesPerLiter) }?.takeIf { it in 20.0..600.0 },
+            bloodGlucoseMgDl = glucose,
         )
     }
 
     /**
-     * 세션마다 (끝-시작)에서 깨어 있던 단계를 빼고 더한다. 여러 앱이 같은 밤을 겹쳐 적은 경우 두 번 세지 않게
-     * 겹친 시간은 한 번만 센다. 세션이 없으면 null.
+     * 세션들의 (시작~끝)을 합집합으로 모은 뒤 깨어 있던 단계를 뺀다. 여러 앱이 같은 밤을 겹쳐 적은 경우 두 번 세지 않고,
+     * 한 앱이 깬 단계로 적은 구간이 단계 없는 다른 세션 때문에 다시 수면으로 세지지 않게 깬 구간은 마지막에 뺀다.
+     * 세션이 없으면 null.
      */
     fun sleepMinutes(sessions: List<SleepSession>): Int? {
         if (sessions.isEmpty()) return null
-        val seconds = union(sessions.flatMap(::asleepSpans)).sumOf { (start, end) -> Duration.between(start, end).seconds }
+        val asleep = union(sessions.filter { it.start.isBefore(it.end) }.map { it.start to it.end })
+        val awake = union(sessions.flatMap(::awakeSpans))
+        val seconds = minus(asleep, awake).sumOf { (start, end) -> Duration.between(start, end).seconds }
         return (seconds / 60).toInt().takeIf { it in 0..1440 }
     }
 
@@ -125,24 +130,27 @@ object HealthDailyCalculator {
         return high to low
     }
 
-    private fun asleepSpans(session: SleepSession): List<Pair<Instant, Instant>> {
-        if (!session.start.isBefore(session.end)) return emptyList()
-        val awake = union(
-            session.stages.filter { it.type in awakeStages }.mapNotNull { stage ->
-                val start = maxOf(stage.start, session.start)
-                val end = minOf(stage.end, session.end)
-                if (start.isBefore(end)) start to end else null
-            },
-        )
-        val spans = mutableListOf<Pair<Instant, Instant>>()
-        var cursor = session.start
-        for ((start, end) in awake) {
-            if (cursor.isBefore(start)) spans += cursor to start
-            if (cursor.isBefore(end)) cursor = end
+    /** 세션 안의 깬 단계 구간(세션 밖으로 넘친 부분은 자른다). */
+    private fun awakeSpans(session: SleepSession): List<Pair<Instant, Instant>> =
+        session.stages.filter { it.type in awakeStages }.mapNotNull { stage ->
+            val start = maxOf(stage.start, session.start)
+            val end = minOf(stage.end, session.end)
+            if (start.isBefore(end)) start to end else null
         }
-        if (cursor.isBefore(session.end)) spans += cursor to session.end
-        return spans
-    }
+
+    /** 정렬·병합된 [spans]에서 정렬·병합된 [holes]를 뺀 구간들. */
+    private fun minus(spans: List<Pair<Instant, Instant>>, holes: List<Pair<Instant, Instant>>): List<Pair<Instant, Instant>> =
+        spans.flatMap { (spanStart, spanEnd) ->
+            val pieces = mutableListOf<Pair<Instant, Instant>>()
+            var cursor = spanStart
+            for ((start, end) in holes) {
+                if (!start.isBefore(spanEnd)) break
+                if (cursor.isBefore(start)) pieces += cursor to start
+                if (cursor.isBefore(end)) cursor = end
+            }
+            if (cursor.isBefore(spanEnd)) pieces += cursor to spanEnd
+            pieces
+        }
 
     private fun union(spans: List<Pair<Instant, Instant>>): List<Pair<Instant, Instant>> {
         val merged = mutableListOf<Pair<Instant, Instant>>()

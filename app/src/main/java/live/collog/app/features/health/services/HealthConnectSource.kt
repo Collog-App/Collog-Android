@@ -90,11 +90,13 @@ class HealthConnectSource(private val context: Context) : HealthRecordSource {
             bloodGlucoses = glucoses,
         )
         if (HealthLink.READ_HEART_RATE !in granted) return records
-        // 안정 시 심박이 없는 날만 그날 수면 구간의 심박을 읽는다(분 단위 기록 전체는 읽지 않는다)
+        // 안정 시 심박이 없는 날만 그날 수면 구간의 심박을 읽는다(분 단위 기록 전체는 읽지 않는다).
+        // readRecords 는 기록의 시작 시각으로 거르므로(플랫폼 RecordHelper), 잠들기 전에 시작해 수면까지 이어진
+        // 심박 시리즈도 받게 앞을 넓혀 읽고 수면 구간과 겹치지 않는 시리즈는 버린다
         val heartRates = HealthDailyCalculator.heartRateWindows(days, records).flatMap { (start, end) ->
-            readAll(HeartRateRecord::class, start.minus(Duration.ofHours(1)), end).flatMap { record ->
-                record.samples.map { TimedSample(it.time, it.beatsPerMinute.toDouble()) }
-            }
+            readAll(HeartRateRecord::class, start.minus(HEART_RATE_LOOKBACK), end)
+                .filter { !it.endTime.isBefore(start) }
+                .flatMap { record -> record.samples.map { TimedSample(it.time, it.beatsPerMinute.toDouble()) } }
         }.distinct()
         return records.copy(heartRates = heartRates)
     }
@@ -135,6 +137,9 @@ class HealthConnectSource(private val context: Context) : HealthRecordSource {
         /** Android 13 이하의 Health Connect 앱(매니페스트 `<queries>`와 같다). */
         const val PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
         private const val MAX_PAGES = 20
+
+        /** 수면 구간보다 이만큼 앞에서 시작한 심박 시리즈까지 읽는다. */
+        private val HEART_RATE_LOOKBACK: Duration = Duration.ofDays(1)
 
         /** Health Connect 설치·업데이트 화면(Google Play). Play 가 없으면 웹 주소로 연다. */
         fun openInstallPage(context: Context) {

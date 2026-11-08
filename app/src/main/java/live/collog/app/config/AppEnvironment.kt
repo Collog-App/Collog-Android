@@ -22,7 +22,7 @@ class AppEnvironment(
     private val http: OkHttpClient = CollogApiClient.DefaultHttp,
 ) {
     var beforeSignOut: (suspend () -> Unit)? = null
-    /** 로그아웃 뒤 Google 로그인 상태를 지운다(CollogApplication이 넣는다). */
+    /** 로그아웃·탈퇴 뒤 Google 로그인 상태를 지우고 건강 앱 권한을 거둔다(CollogApplication이 넣는다). */
     var afterSignOut: (suspend () -> Unit)? = null
     var reportNotificationRevision by mutableIntStateOf(0)
     /** RootScreen이 마지막으로 연 리포트 알림 번호. 첫 화면을 그리기 전에 온 알림(꺼진 앱에서 누름)도 열려고 둔다. */

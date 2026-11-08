@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -15,6 +17,7 @@ import live.collog.app.config.AppEnvironment
 import live.collog.app.features.health.models.HealthDailyCalculator
 import live.collog.app.features.health.models.HealthRecords
 import live.collog.app.shared.services.api.ApiError
+import live.collog.app.shared.services.api.HealthDayDto
 import live.collog.app.shared.services.api.HealthLinkDocument
 import live.collog.app.shared.services.api.HealthLinkStatusDto
 
@@ -74,6 +77,7 @@ class HealthLink(
     private val source: HealthRecordSource,
     private val prefs: SharedPreferences,
     private val today: () -> LocalDate = { LocalDate.now(HealthDailyCalculator.zone) },
+    private val now: () -> Instant = Instant::now,
 ) {
     var isPresented by mutableStateOf(false)
         private set
@@ -88,6 +92,7 @@ class HealthLink(
 
     private var status by mutableStateOf<HealthLinkStatus>(HealthLinkStatus.Unknown)
     private var statusOwner: String? = null
+    private var statusCheckedAt: Instant? = null
     private var hintRevision by mutableIntStateOf(0)
     private val statusMutex = Mutex()
     private val syncMutex = Mutex()
@@ -123,11 +128,16 @@ class HealthLink(
         hintRevision += 1
     }
 
-    /** 아직 이 계정의 상태를 모르면(또는 못 불러왔으면) 불러온다. */
+    /**
+     * 아직 이 계정의 상태를 모르면(또는 못 불러왔으면) 불러온다. 「준비 중」은 그 사이 서버에 API 가 생겼을 수 있어
+     * 마지막 확인에서 [UNSUPPORTED_RECHECK]가 지났으면 다시 묻는다.
+     */
     suspend fun ensureStatus(environment: AppEnvironment) {
         val userId = userId(environment) ?: return
         val current = statusFor(userId)
-        if (current is HealthLinkStatus.Loaded || current == HealthLinkStatus.Unsupported) return
+        if (current is HealthLinkStatus.Loaded) return
+        val checkedAt = statusCheckedAt
+        if (current == HealthLinkStatus.Unsupported && checkedAt != null && now().isBefore(checkedAt.plus(UNSUPPORTED_RECHECK))) return
         refreshStatus(environment)
     }
 
@@ -176,10 +186,6 @@ class HealthLink(
         }
     }
 
-    /** 권한 창에 띄울 권한. 모두 받았으면 null(창 없이 바로 연결한다). */
-    suspend fun permissionsToRequest(): Set<String>? =
-        if (grantedReadPermissions().containsAll(ReadPermissions)) null else ReadPermissions
-
     fun beginConnect(document: HealthLinkDocument) {
         step = HealthLinkStep.Connecting(document)
     }
@@ -224,7 +230,7 @@ class HealthLink(
         }
         setStatus(userId, HealthLinkStatus.Loaded(link.copy(connected = true)))
         val before = revision
-        sync(environment, force = true)
+        sync(environment, force = true, justConnected = true)
         // 리포트는 동기화가 끝난 뒤 한 번만 다시 불러오게 한다
         if (revision == before) revision += 1
         step = linkedStep(currentLink(userId) ?: link, justConnected = true, hasPermission = true)
@@ -252,18 +258,28 @@ class HealthLink(
             step = HealthLinkStep.Failed(e.message ?: "연결을 끊지 못했어요. 잠시 후 다시 시도해 주세요.")
             return
         }
-        try {
-            if (source.availability() == HealthAvailability.Available) source.revokeAll()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "Health Connect 권한을 거두지 못했어요", e)
-        }
+        revokePermissions()
         prefs.edit().remove(syncKey(userId)).apply()
         val link = currentLink(userId) ?: HealthLinkStatusDto()
         setStatus(userId, HealthLinkStatus.Loaded(link.copy(connected = false, lastSyncedDay = null)))
         revision += 1
         isPresented = false
+    }
+
+    /**
+     * 이 앱의 Health Connect 권한을 거둔다(연결 끊기, 로그아웃·탈퇴). 다음에 로그인한 계정이 이전 계정이 준 권한을
+     * 그대로 쓰지 않게 한다. Android 14 이상은 바로 거둬지지 않고, 앱이 뒤로 간 뒤 시스템이 앱 프로세스를 끝내며
+     * 거둔다(`Context.revokeSelfPermissionsOnKill`). 그래서 받은 권한이 없으면 부르지 않는다.
+     */
+    suspend fun revokePermissions() {
+        if (grantedReadPermissions().isEmpty()) return
+        try {
+            source.revokeAll()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Health Connect 권한을 거두지 못했어요", e)
+        }
     }
 
     /** 앱이 앞으로 올 때: 오늘 아직 보내지 않았고 연결돼 있으면 최근 14일을 다시 계산해 올린다. */
@@ -275,7 +291,11 @@ class HealthLink(
         sync(environment, force = false)
     }
 
-    private suspend fun sync(environment: AppEnvironment, force: Boolean): Boolean = syncMutex.withLock {
+    /**
+     * 최근 14일을 다시 계산해 올린다. 서버는 같은 날짜를 통째로 바꾸므로, Health Connect 에서 지운 기록도 서버에서
+     * 지워지게 값이 하나도 없는 날도 보낸다. 다만 연결 직후([justConnected])에 기록이 하나도 없으면 보내지 않는다.
+     */
+    private suspend fun sync(environment: AppEnvironment, force: Boolean, justConnected: Boolean = false): Boolean = syncMutex.withLock {
         val userId = userId(environment) ?: return@withLock false
         val day = today()
         if (!force && prefs.getString(syncKey(userId), null) == day.toString()) return@withLock true
@@ -285,18 +305,36 @@ class HealthLink(
 
         val days = HealthDailyCalculator.syncDays(day)
         val summaries = try {
-            HealthDailyCalculator.summaries(days, source.read(days, granted)).filter { it.hasAnyValue }
+            HealthDailyCalculator.summaries(days, source.read(days, granted))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Health Connect 기록을 읽지 못했어요", e)
             return@withLock false
         }
-        if (summaries.isEmpty()) {
+        if (justConnected && summaries.none { it.hasAnyValue }) {
             markSynced(userId, day)
             return@withLock true
         }
 
+        var failure = upload(environment, userId, day, summaries) ?: return@withLock true
+        if (failure is ApiError.Server && failure.status == 422) {
+            // 서버가 오늘 날짜를 아직 받지 않을 수 있다. 오늘을 빼고 한 번만 다시 보낸다
+            val earlier = summaries.filter { it.date != day.toString() }
+            if (earlier.isNotEmpty()) failure = upload(environment, userId, day, earlier) ?: return@withLock true
+        }
+        when {
+            failure.isUnsupported -> setStatus(userId, HealthLinkStatus.Unsupported)
+            failure is ApiError.Server && failure.code == "HEALTH_LINK_REQUIRED" ->
+                setStatus(userId, HealthLinkStatus.Loaded((currentLink(userId) ?: HealthLinkStatusDto()).copy(connected = false)))
+        }
+        // 서버가 받지 않은 요청(4xx)은 같은 날 다시 보내지 않는다. 연결·서버 오류는 다음에 앞으로 올 때 다시.
+        if (failure is ApiError.Server && failure.status in 400..499) markSynced(userId, day)
+        false
+    }
+
+    /** 올리고 성공하면 null, 실패하면 그 오류. */
+    private suspend fun upload(environment: AppEnvironment, userId: String, day: LocalDate, summaries: List<HealthDayDto>): Exception? =
         try {
             val result = environment.api.uploadHealthDaily(summaries)
             currentLink(userId)?.let { link ->
@@ -304,21 +342,13 @@ class HealthLink(
             }
             markSynced(userId, day)
             revision += 1
-            true
+            null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "건강 요약을 올리지 못했어요", e)
-            when {
-                e.isUnsupported -> setStatus(userId, HealthLinkStatus.Unsupported)
-                e is ApiError.Server && e.code == "HEALTH_LINK_REQUIRED" ->
-                    setStatus(userId, HealthLinkStatus.Loaded((currentLink(userId) ?: HealthLinkStatusDto()).copy(connected = false)))
-            }
-            // 서버가 받지 않은 요청(4xx)은 같은 날 다시 보내지 않는다. 연결·서버 오류는 다음에 앞으로 올 때 다시.
-            if (e is ApiError.Server && e.status in 400..499) markSynced(userId, day)
-            false
+            e
         }
-    }
 
     private fun linkedStep(link: HealthLinkStatusDto, justConnected: Boolean, hasPermission: Boolean): HealthLinkStep =
         HealthLinkStep.Linked(justConnected = justConnected, lastSyncedDay = link.lastSyncedDay, hasPermission = hasPermission)
@@ -328,6 +358,7 @@ class HealthLink(
     private fun setStatus(userId: String, next: HealthLinkStatus) {
         statusOwner = userId
         status = next
+        statusCheckedAt = now()
     }
 
     private fun markSynced(userId: String, day: LocalDate) {
@@ -354,6 +385,9 @@ class HealthLink(
     companion object {
         private const val TAG = "HealthLink"
         private const val FAILED_TEXT = "건강 앱 연결 상태를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
+
+        /** 「준비 중」을 받은 뒤 이만큼 지나면 앱이 앞으로 올 때 다시 묻는다. */
+        val UNSUPPORTED_RECHECK: Duration = Duration.ofMinutes(30)
 
         const val READ_SLEEP = "android.permission.health.READ_SLEEP"
         const val READ_STEPS = "android.permission.health.READ_STEPS"

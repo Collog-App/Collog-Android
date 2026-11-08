@@ -1,7 +1,7 @@
 package live.collog.app.features.health
 
 import java.time.Instant
-import java.time.ZoneId
+import java.util.TimeZone
 import kotlinx.coroutines.test.runTest
 import live.collog.app.TestEnvironment
 import live.collog.app.features.report.models.WeeklyReport
@@ -47,7 +47,14 @@ class SafetyNoticeTests {
                                 {"callId":"call-2","observedAt":"알 수 없음","text":"$notice"},
                                 {"callId":"call-3","observedAt":null,"text":"  "}]""",
         )
-        val notices = WeeklyReport.fromDto(dto, null, zone = ZoneId.of("Asia/Seoul")).safetyNotices
+        // 기기 시간대가 달라도(로스앤젤레스면 11월 6일 오후) 통화 날짜는 서울 기준이다
+        val original = TimeZone.getDefault()
+        val notices = try {
+            TimeZone.setDefault(TimeZone.getTimeZone("America/Los_Angeles"))
+            WeeklyReport.fromDto(dto, null).safetyNotices
+        } finally {
+            TimeZone.setDefault(original)
+        }
 
         assertEquals(listOf("call-1", "call-2"), notices.map { it.callId })
         assertEquals(notice, notices[0].text)

@@ -310,7 +310,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
      * 서버에 아직 API 가 없거나(404) 공유가 막혔으면 null 이라 카드를 숨긴다.
      */
     private suspend fun lifeRecord(api: CollogApi, parentId: String, bounds: WeekBounds): LifeRecord? {
-        val today = TimelineWeekPage.today()
+        val today = TimelineWeekPage.healthToday()
         val end = minOf(bounds.end, today)
         val dto = orNull {
             api.parentHealthDaily(

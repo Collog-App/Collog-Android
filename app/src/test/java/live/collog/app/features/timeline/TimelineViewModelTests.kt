@@ -20,6 +20,7 @@ import org.junit.Test
 /** iOS `TimelineViewModel`에는 전용 테스트가 없다. 서버 응답은 가짜 서버로 대신한다. */
 class TimelineViewModelTests {
     private val originalToday = TimelineWeekPage.today
+    private val originalHealthToday = TimelineWeekPage.healthToday
 
     @Before
     fun fixToday() {
@@ -29,6 +30,7 @@ class TimelineViewModelTests {
     @After
     fun restoreToday() {
         TimelineWeekPage.today = originalToday
+        TimelineWeekPage.healthToday = originalHealthToday
     }
 
     private fun withFixture(role: String = "CHILD", body: suspend (TestEnvironment) -> Unit) = runTest {
@@ -389,5 +391,29 @@ class TimelineViewModelTests {
         assertEquals(page.reportError, page.timelineError)
         // 다른 화면처럼 닉네임이 있으면 닉네임(계정 이름 Tester 가 아니라)
         assertEquals("테스터", model.selectedMember)
+    }
+
+    @Test
+    fun lifeRecordWindowEndsOnSeoulTodayEvenWhenTheDeviceDateIsBehind() = withFixture { fixture ->
+        serve(fixture)
+        val base = fixture.respond
+        fixture.respond = { request ->
+            if (request.path().endsWith("/health/daily")) {
+                200 to """{"parentId":"mom","connected":true,"days":[]}"""
+            } else {
+                base(request)
+            }
+        }
+        // 기기 날짜는 10-24(토)인데 서울은 이미 10-25(일)
+        TimelineWeekPage.healthToday = { LocalDate.parse("2026-10-25") }
+        val model = TimelineViewModel(0)
+        model.refresh(fixture.environment)
+
+        val health = fixture.requests.first { it.path() == "/v1/parents/mom/health/daily" }
+        assertEquals("2026-09-26", health.url.queryParameter("from"))
+        assertEquals("2026-10-25", health.url.queryParameter("to"))
+        assertEquals("최근 7일", model.page(0).lifeRecord!!.rangeText)
+        // 주 경계(리포트·타임라인)는 그대로 기기 날짜를 따른다
+        assertEquals("2026-10-24", fixture.requests.first { it.path().endsWith("/reports") }.url.queryParameter("date"))
     }
 }

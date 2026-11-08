@@ -39,6 +39,8 @@ class CollogApplication : Application() {
         environment.afterSignOut = {
             GoogleSignIn.clear(this)
             KakaoSignIn.clear()
+            // 로그아웃·탈퇴: 다음 계정이 이 계정이 준 건강 앱 권한을 그대로 쓰지 않게 거둔다
+            healthLink.revokePermissions()
         }
         permissions = PermissionRequester(this)
         healthLink = HealthLink(HealthConnectSource(this), getSharedPreferences("collog.health", Context.MODE_PRIVATE))

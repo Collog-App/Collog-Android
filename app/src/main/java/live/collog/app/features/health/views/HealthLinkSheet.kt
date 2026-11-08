@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 import live.collog.app.config.LocalAppEnvironment
 import live.collog.app.features.health.models.LifeRecord
 import live.collog.app.features.health.services.HealthConnectSource
+import live.collog.app.features.health.services.HealthLink
 import live.collog.app.features.health.services.HealthLinkStep
 import live.collog.app.features.health.services.LocalHealthLink
 import live.collog.app.features.settings.views.components.SettingsActionButton
@@ -77,25 +78,24 @@ fun HealthLinkSheetHost() {
     var confirmsDisconnect by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { link.prepare(environment) }
 
-    fun requestPermissions(onAlreadyGranted: suspend () -> Unit) {
-        scope.launch {
-            val permissions = link.permissionsToRequest() ?: return@launch onAlreadyGranted()
-            try {
-                permissionLauncher.launch(permissions)
-            } catch (_: ActivityNotFoundException) {
-                link.showNeedsInstall()
-            }
+    // 이미 받은 권한이 있어도 늘 권한 창을 거친다(다 받았으면 시스템이 바로 돌려준다). 다른 계정이 전에 준 권한을
+    // 창 없이 그대로 쓰지 않게 한다.
+    fun requestPermissions() {
+        try {
+            permissionLauncher.launch(HealthLink.ReadPermissions)
+        } catch (_: ActivityNotFoundException) {
+            link.showNeedsInstall()
         }
     }
 
     fun connect(document: HealthLinkDocument) {
         link.beginConnect(document)
-        requestPermissions { link.completeConnect(environment) }
+        requestPermissions()
     }
 
     fun regrant() {
         link.beginRegrant()
-        requestPermissions { link.completeRegrant(environment) }
+        requestPermissions()
     }
 
     ModalBottomSheet(

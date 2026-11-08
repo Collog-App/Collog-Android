@@ -1,5 +1,7 @@
 package live.collog.app.features.health
 
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -45,6 +47,7 @@ private class FakeHealthSource : HealthRecordSource {
 /** 건강 앱 연결 약속(2026-11-08). 서버가 아직 없으므로 경로·본문·응답 해석과 404 처리를 가짜 서버로 확인한다. */
 class HealthLinkTests {
     private val today = LocalDate.of(2026, 11, 8)
+    private var clock = Instant.parse("2026-11-08T01:00:00Z")
     private val document =
         """{"version":"health-link-2026-11-08.v1","title":"건강 앱 연결 (선택)","items":["하나","둘","셋","넷","다섯","여섯"]}"""
 
@@ -56,7 +59,7 @@ class HealthLinkTests {
         val fixture = TestEnvironment()
         val source = FakeHealthSource()
         var day = today
-        val link = HealthLink(source, MemoryPreferences(), today = { day })
+        val link = HealthLink(source, MemoryPreferences(), today = { day }, now = { clock })
         try {
             body(fixture, link, source) { day = day.plusDays(1); day }
         } finally {
@@ -69,6 +72,10 @@ class HealthLinkTests {
         body!!.writeTo(buffer)
         return Json.parseToJsonElement(buffer.readUtf8()).jsonObject
     }
+
+    private fun Request.dates(): List<String> = json()["days"]!!.jsonArray.map { it.jsonObject["date"]!!.jsonPrimitive.content }
+
+    private fun TestEnvironment.puts(): List<Request> = requests.filter { it.method == "PUT" }
 
     @Test
     fun serverWithoutHealthApiIsQuietlyNotReady() = withLink { fixture, link, _, _ ->
@@ -83,6 +90,27 @@ class HealthLinkTests {
         link.present()
         link.prepare(fixture.environment)
         assertEquals(HealthLinkStep.NotReady, link.step)
+    }
+
+    @Test
+    fun notReadyIsAskedAgainWhenTheAppComesBackAfterThirtyMinutes() = withLink { fixture, link, _, _ ->
+        var ready = false
+        fixture.respond = { if (ready) 200 to status(connected = false) else 404 to """{"detail":"Not Found"}""" }
+
+        link.syncIfDue(fixture.environment)
+        assertEquals("준비 중", link.rowText("me"))
+
+        clock = clock.plus(Duration.ofMinutes(29))
+        link.syncIfDue(fixture.environment)
+        assertEquals(1, fixture.requests.count { it.method == "GET" })
+
+        // 그 사이 서버에 API 가 생겼다
+        ready = true
+        clock = clock.plus(Duration.ofMinutes(2))
+        link.syncIfDue(fixture.environment)
+        assertEquals(2, fixture.requests.count { it.method == "GET" })
+        assertEquals("연결 안 됨", link.rowText("me"))
+        assertTrue(link.shouldShowHint(fixture.environment))
     }
 
     @Test
@@ -128,7 +156,6 @@ class HealthLinkTests {
         val consent = link.step as HealthLinkStep.Consent
 
         link.beginConnect(consent.document)
-        assertEquals(HealthLink.ReadPermissions, link.permissionsToRequest())
         link.completeConnect(fixture.environment)
 
         assertEquals(HealthLinkStep.PermissionDenied, link.step)
@@ -159,9 +186,10 @@ class HealthLinkTests {
         val put = fixture.requests.single { it.method == "PUT" }
         assertEquals("/v1/health/daily", put.url.encodedPath)
         val days = put.json()["days"]!!.jsonArray
-        // 기록이 없는 날은 보내지 않는다
-        assertEquals(1, days.size)
-        val day = days.single().jsonObject
+        // 최근 14일을 모두 보낸다(오늘까지)
+        assertEquals(14, days.size)
+        assertEquals("2026-10-26", days.first().jsonObject["date"]!!.jsonPrimitive.content)
+        val day = days.last().jsonObject
         assertEquals("2026-11-08", day["date"]!!.jsonPrimitive.content)
         assertEquals(3210, day["steps"]!!.jsonPrimitive.int)
         assertFalse("sleepMinutes" in day)
@@ -230,6 +258,107 @@ class HealthLinkTests {
         val current = link.statusFor("me") as HealthLinkStatus.Loaded
         assertFalse(current.link.connected)
         assertEquals("연결 안 됨", link.rowText("me"))
+    }
+
+    @Test
+    fun unprocessableUploadIsSentOnceMoreWithoutToday() = withLink { fixture, link, source, _ ->
+        source.records = HealthRecords(stepsByDay = mapOf(today to 100L, today.minusDays(1) to 200L))
+        var puts = 0
+        fixture.respond = { request ->
+            if (request.method == "PUT") {
+                puts += 1
+                if (puts == 1) {
+                    422 to """{"code":"VALIDATION_ERROR","message":"date"}"""
+                } else {
+                    200 to """{"saved":13,"lastSyncedDay":"2026-11-07"}"""
+                }
+            } else {
+                200 to status(connected = true)
+            }
+        }
+        link.syncIfDue(fixture.environment)
+
+        val (first, second) = fixture.puts()
+        assertEquals(14, first.dates().size)
+        assertEquals(13, second.dates().size)
+        assertFalse("2026-11-08" in second.dates())
+        assertEquals("2026-11-07", second.dates().last())
+        assertEquals("2026-11-07", (link.statusFor("me") as HealthLinkStatus.Loaded).link.lastSyncedDay)
+
+        // 보냈으니 오늘은 더 보내지 않는다
+        link.syncIfDue(fixture.environment)
+        assertEquals(2, fixture.puts().size)
+    }
+
+    @Test
+    fun uploadRefusedAgainFoldsTheDayButServerErrorsAreRetried() = withLink { fixture, link, source, nextDay ->
+        source.records = HealthRecords(stepsByDay = mapOf(today to 100L))
+        var putStatus = 422
+        fixture.respond = { request ->
+            if (request.method == "PUT") putStatus to """{"code":"VALIDATION_ERROR","message":"범위"}""" else 200 to status(connected = true)
+        }
+
+        link.syncIfDue(fixture.environment)
+        // 422 → 오늘을 빼고 한 번 더, 그래도 4xx 면 그날은 접는다
+        assertEquals(2, fixture.puts().size)
+        link.syncIfDue(fixture.environment)
+        assertEquals(2, fixture.puts().size)
+
+        // 다음 날 서버 오류(5xx)는 접지 않고 앱이 다시 앞으로 올 때 보낸다
+        nextDay()
+        putStatus = 503
+        link.syncIfDue(fixture.environment)
+        link.syncIfDue(fixture.environment)
+        assertEquals(4, fixture.puts().size)
+    }
+
+    @Test
+    fun daysWithoutAnyRecordAreStillSentSoDeletedRecordsAreClearedOnTheServer() = withLink { fixture, link, source, _ ->
+        // Health Connect 에서 기록을 모두 지웠다
+        source.records = HealthRecords()
+        fixture.respond = { request ->
+            if (request.method == "PUT") {
+                200 to """{"saved":14,"lastSyncedDay":"2026-11-08"}"""
+            } else {
+                200 to status(connected = true, lastSyncedDay = "2026-11-07")
+            }
+        }
+        link.syncIfDue(fixture.environment)
+
+        val days = fixture.puts().single().json()["days"]!!.jsonArray
+        assertEquals(14, days.size)
+        // 값이 없는 칸은 보내지 않는다(서버가 null 로 받는다)
+        assertTrue(days.all { it.jsonObject.keys == setOf("date") })
+    }
+
+    @Test
+    fun firstSyncRightAfterConnectingSendsNothingWithoutAnyRecord() = withLink { fixture, link, source, _ ->
+        source.records = HealthRecords()
+        fixture.respond = { request ->
+            when (request.method) {
+                "GET" -> 200 to status(connected = false)
+                "POST" -> 200 to status(connected = true)
+                else -> 500 to "{}"
+            }
+        }
+        link.prepare(fixture.environment)
+        link.beginConnect((link.step as HealthLinkStep.Consent).document)
+        link.completeConnect(fixture.environment)
+
+        assertTrue(fixture.puts().isEmpty())
+        assertEquals(HealthLinkStep.Linked(justConnected = true, lastSyncedDay = null, hasPermission = true), link.step)
+    }
+
+    @Test
+    fun signingOutRevokesHealthConnectPermissionsOnlyWhenSomeWereGranted() = withLink { _, link, source, _ ->
+        source.granted = emptySet()
+        link.revokePermissions()
+        // 받은 권한이 없으면 부르지 않는다(Android 14 이상은 거두면서 앱 프로세스를 끝낸다)
+        assertFalse(source.revoked)
+
+        source.granted = setOf(HealthLink.READ_STEPS)
+        link.revokePermissions()
+        assertTrue(source.revoked)
     }
 
     @Test

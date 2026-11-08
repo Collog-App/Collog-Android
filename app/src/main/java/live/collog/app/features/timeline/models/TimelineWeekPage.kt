@@ -7,6 +7,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.time.temporal.WeekFields
+import live.collog.app.features.health.models.HealthDailyCalculator
 import live.collog.app.features.health.models.LifeRecord
 import live.collog.app.features.report.models.WeeklyReport
 import live.collog.app.shared.services.api.ApiFormat
@@ -52,6 +53,9 @@ data class TimelineWeekPage(
     companion object {
         /** 테스트가 "오늘"을 고정할 때 바꾼다. */
         internal var today: () -> LocalDate = { LocalDate.now(ZoneId.systemDefault()) }
+
+        /** 리포트 「생활 기록」의 오늘. 건강 요약 날짜는 서버와 같은 Asia/Seoul 이다. 테스트가 고정할 때 바꾼다. */
+        internal var healthToday: () -> LocalDate = { LocalDate.now(HealthDailyCalculator.zone) }
 
         internal val isoDate = DateTimeFormatter.ISO_LOCAL_DATE
 

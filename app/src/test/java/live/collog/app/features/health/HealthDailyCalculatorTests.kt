@@ -87,6 +87,24 @@ class HealthDailyCalculatorTests {
     }
 
     @Test
+    fun awakeStageOfOneAppIsNotFilledBackInByAnotherAppsSessionWithoutStages() {
+        val records = HealthRecords(
+            sleepSessions = listOf(
+                // A: 단계가 있고 01:00~01:30 깸
+                session(
+                    "2026-11-06T23:00", "2026-11-07T07:00",
+                    stage("2026-11-06T23:00", "2026-11-07T01:00", SleepSessionRecord.STAGE_TYPE_LIGHT),
+                    stage("2026-11-07T01:00", "2026-11-07T01:30", SleepSessionRecord.STAGE_TYPE_AWAKE),
+                    stage("2026-11-07T01:30", "2026-11-07T07:00", SleepSessionRecord.STAGE_TYPE_DEEP),
+                ),
+                // B: 같은 밤, 단계 없음
+                session("2026-11-06T23:00", "2026-11-07T07:00"),
+            ),
+        )
+        assertEquals(8 * 60 - 30, summary(records).sleepMinutes)
+    }
+
+    @Test
     fun noSessionMeansNoSleepValue() {
         assertNull(summary(HealthRecords()).sleepMinutes)
         assertFalse(summary(HealthRecords()).hasAnyValue)
@@ -185,6 +203,27 @@ class HealthDailyCalculatorTests {
         assertNull(result.bloodPressureSystolic)
         assertNull(result.bloodPressureDiastolic)
         assertNull(result.bloodGlucoseMgDl)
+    }
+
+    @Test
+    fun outOfRangeLastReadingFallsBackToTheLastReadingInRange() {
+        val records = HealthRecords(
+            bloodPressures = listOf(
+                BloodPressureReading(seoul("2026-11-07T08:00"), 140.0, 90.0),
+                BloodPressureReading(seoul("2026-11-07T12:00"), 132.0, 84.0),
+                // 그날 마지막이지만 이완기가 수축기보다 높아 서버가 받지 않는다
+                BloodPressureReading(seoul("2026-11-07T21:00"), 80.0, 90.0),
+            ),
+            bloodGlucoses = listOf(
+                BloodGlucoseReading(seoul("2026-11-07T08:00"), 5.5),
+                // 그날 마지막이지만 720 mg/dL 라 범위 밖
+                BloodGlucoseReading(seoul("2026-11-07T20:00"), 40.0),
+            ),
+        )
+        val result = summary(records)
+        assertEquals(132, result.bloodPressureSystolic)
+        assertEquals(84, result.bloodPressureDiastolic)
+        assertEquals(99.0, result.bloodGlucoseMgDl!!, 0.0)
     }
 
     @Test
