@@ -21,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import live.collog.app.features.call.services.LocalCallCenter
+import live.collog.app.features.health.services.LocalHealthLink
 import live.collog.app.features.settings.models.GuestSamples
 import live.collog.app.shared.components.navbar.CollapsingHeaderScrollView
 import live.collog.app.shared.components.spec.SpecToggle
@@ -65,7 +66,7 @@ fun SettingsScreen() {
 }
 
 /**
- * 새 피그마 15 「설정 · 메인」: 계정(4줄) / 알림(통화·리포트 토글) / 통화(질문 음성 안내 토글) / 로그아웃.
+ * 새 피그마 15 「설정 · 메인」: 계정(4줄, 로그인하면 피그마에 없는 「건강 앱 연결」 한 줄 더) / 알림(통화·리포트 토글) / 통화(질문 음성 안내 토글) / 로그아웃.
  * 명세에 없는 계정 세부(이메일·전화번호·마케팅·개인정보처리방침·동의 철회·계정 삭제)는 「계정 정보」 줄 안쪽에 그대로 둔다.
  * 초대 코드 입력은 「가족 구성원 관리」 안에 있다.
  */
@@ -73,6 +74,7 @@ fun SettingsScreen() {
 private fun SettingsRoot() {
     val environment = LocalAppEnvironment.current
     val callCenter = LocalCallCenter.current
+    val healthLink = LocalHealthLink.current
     val tabManager = LocalTabManager.current
     val navigator = LocalNavigationManager.current
     val scope = rememberCoroutineScope()
@@ -98,6 +100,13 @@ private fun SettingsRoot() {
                 SpecNavigationRow("가족 구성원 관리") { navigator.push(SettingsRoute.FamilyMembers) }
                 SpecDivider()
                 SpecNavigationRow("가족 공유 데이터 범위") { navigator.push(SettingsRoute.FamilySharing) }
+                // 건강 연결 약속(11-08): 별도 선택 동의. 체험 모드에는 서버가 없어 두지 않는다
+                if (!isGuest && environment.session.isAuthenticated) {
+                    SpecDivider()
+                    SpecNavigationRow("건강 앱 연결", value = healthLink.rowText(environment.session.user?.id)) {
+                        healthLink.present()
+                    }
+                }
             }
 
             SettingsGroup("알림") {

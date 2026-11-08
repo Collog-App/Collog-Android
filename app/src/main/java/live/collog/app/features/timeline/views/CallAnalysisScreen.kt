@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import live.collog.app.R
 import live.collog.app.config.LocalAppEnvironment
+import live.collog.app.features.health.views.SafetyNoticeCard
 import live.collog.app.features.settings.views.components.SettingsDetailHeader
 import live.collog.app.features.timeline.models.CallAnalysis
 import live.collog.app.features.timeline.models.CallAnalysisState
@@ -105,6 +106,8 @@ private fun AnalysisContent(analysis: CallAnalysis, subjectName: String) {
             .padding(horizontal = Spacing.screenHorizontal)
             .padding(top = 27.dp, bottom = Spacing.x8),
     ) {
+        // 응급 안내(11-08 가드레일)는 분석 내용보다 위에
+        analysis.safetyNotice?.let { SafetyNoticeCard(it, Modifier.padding(bottom = Spacing.x6)) }
         Image(painterResource(R.drawable.ic_family_health), contentDescription = null, modifier = Modifier.size(24.dp))
         Text(
             "방금 나눈 대화에서 건강 관련 정보를 추출 하였습니다.",

@@ -9,6 +9,8 @@ import live.collog.app.features.auth.services.GoogleSignIn
 import live.collog.app.features.auth.services.KakaoSignIn
 import live.collog.app.features.call.services.AndroidCallPlatform
 import live.collog.app.features.call.services.CallCenter
+import live.collog.app.features.health.services.HealthConnectSource
+import live.collog.app.features.health.services.HealthLink
 import live.collog.app.shared.services.AuthSession
 import live.collog.app.shared.services.CredentialStore
 import live.collog.app.shared.services.PermissionRequester
@@ -22,6 +24,8 @@ class CollogApplication : Application() {
     lateinit var callCenter: CallCenter
         private set
     lateinit var permissions: PermissionRequester
+        private set
+    lateinit var healthLink: HealthLink
         private set
 
     override fun onCreate() {
@@ -37,6 +41,7 @@ class CollogApplication : Application() {
             KakaoSignIn.clear()
         }
         permissions = PermissionRequester(this)
+        healthLink = HealthLink(HealthConnectSource(this), getSharedPreferences("collog.health", Context.MODE_PRIVATE))
         val scope = MainScope()
         callCenter = CallCenter(
             environment = environment,

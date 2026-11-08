@@ -13,6 +13,7 @@ import live.collog.app.config.LocalAppEnvironment
 import live.collog.app.features.call.services.CallNotifications
 import live.collog.app.features.call.services.CallService
 import live.collog.app.features.call.services.LocalCallCenter
+import live.collog.app.features.health.services.LocalHealthLink
 
 class MainActivity : ComponentActivity() {
     private val app: CollogApplication get() = application as CollogApplication
@@ -33,6 +34,7 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(
                 LocalAppEnvironment provides app.environment,
                 LocalCallCenter provides app.callCenter,
+                LocalHealthLink provides app.healthLink,
             ) {
                 RootScreen()
             }

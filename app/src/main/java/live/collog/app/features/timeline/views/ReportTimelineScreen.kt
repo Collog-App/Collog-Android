@@ -46,6 +46,9 @@ import kotlin.math.abs
 import kotlinx.coroutines.launch
 import live.collog.app.config.LocalAppEnvironment
 import live.collog.app.features.call.services.LocalCallCenter
+import live.collog.app.features.health.services.LocalHealthLink
+import live.collog.app.features.health.views.LifeRecordCard
+import live.collog.app.features.health.views.SafetyNoticeCard
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.report.models.ReportState
 import live.collog.app.features.report.views.ReportContent
@@ -111,6 +114,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
     val tabManager = LocalTabManager.current
     val navigation = LocalNavigationManager.current
     val callCenter = LocalCallCenter.current
+    val healthLink = LocalHealthLink.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
@@ -171,6 +175,12 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
     }
 
     LaunchedEffect(Unit) { viewModel.refresh(environment) }
+    // 내 건강 앱을 연결·동기화·끊으면 내 리포트의 「생활 기록」을 다시 불러온다
+    OnChange(healthLink.revision) { _, _ ->
+        if (tab == MainTab.Report && viewModel.selectedContactId == TimelineViewModel.SelfContactId) {
+            scope.launch { viewModel.refresh(environment, forceReload = true) }
+        }
+    }
     // 가족 목록보다 먼저 그려지면(꺼진 앱에서 리포트 알림을 눌러 바로 이 탭이 열림) 고를 가족이 없어 빈 화면에 머문다.
     // 목록이 오면 다시 고르고 불러온다.
     // 화면 범위에서 돌린다: 목록이 연달아 바뀌어 진행 중인 refresh가 취소되면 그 주가 로딩 중에 멈출 수 있다.
@@ -288,16 +298,45 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
     fun ReportPageContent(page: TimelineWeekPage) {
         val reportError = page.reportError
         val timelineError = page.timelineError
-        if (reportError != null) {
-            ErrorContent(reportError, page.offset)
-        } else if (page.report.state == ReportState.Empty) {
-            if (timelineError != null) ErrorContent(timelineError, page.offset) else EmptyAnalysisContent(page)
-        } else {
-            ReportContent(
-                page.report,
-                Modifier.padding(horizontal = Spacing.x5).padding(top = Spacing.x2),
-                isLoaded = true,
-            )
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.x3)) {
+            // 응급 안내(11-08 가드레일)는 리포트 맨 위. 누르면 그 통화의 분석 화면을 연다
+            val notices = if (reportError == null) page.report.safetyNotices else emptyList()
+            if (notices.isNotEmpty()) {
+                Column(
+                    Modifier.padding(horizontal = Spacing.x5).padding(top = Spacing.x2),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+                ) {
+                    notices.forEach { notice ->
+                        SafetyNoticeCard(
+                            notice.text,
+                            if (notice.callId.isBlank()) Modifier else Modifier.pressable { navigation.push(CallAnalysisRoute(notice.callId)) },
+                            caption = notice.dayText,
+                        )
+                    }
+                }
+            }
+
+            if (reportError != null) {
+                ErrorContent(reportError, page.offset)
+            } else if (page.report.state == ReportState.Empty) {
+                if (timelineError != null) ErrorContent(timelineError, page.offset) else EmptyAnalysisContent(page)
+            } else {
+                ReportContent(
+                    page.report,
+                    Modifier.padding(horizontal = Spacing.x5).padding(top = Spacing.x2),
+                    isLoaded = true,
+                )
+            }
+
+            // 생활 기록(건강 앱 연결). 내 리포트에서만 「연결하기」를 보인다
+            page.lifeRecord?.let { record ->
+                val isSelf = viewModel.selectedContactId == TimelineViewModel.SelfContactId
+                LifeRecordCard(
+                    record,
+                    onConnect = if (isSelf) healthLink::present else null,
+                    modifier = Modifier.padding(horizontal = Spacing.x5),
+                )
+            }
         }
     }
 

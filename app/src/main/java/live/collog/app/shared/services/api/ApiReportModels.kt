@@ -139,6 +139,8 @@ data class ReportDto(
     val analyzedCallCount: Int,
     val containsDemoData: Boolean? = null,
     val demoDataNotice: String? = null,
+    /** 서버가 아직 보내지 않으면 빈 목록. */
+    val safetyNotices: List<SafetyNoticeDto> = emptyList(),
 )
 
 @Serializable
@@ -167,6 +169,8 @@ data class ExtractionDto(
     val activity: String? = null,
     val sleep: String? = null,
     val facts: List<ExtractionFactDto> = emptyList(),
+    /** 통화 중 응급 표현이 있었을 때의 고정 안내 문구. 없거나 서버가 아직 보내지 않으면 null. */
+    val safetyNotice: String? = null,
 )
 
 /** 서버 `ExtractionFact`: 범주별 요약과 근거 구간 번호(타임라인 키워드 줄 위치에 쓴다). */

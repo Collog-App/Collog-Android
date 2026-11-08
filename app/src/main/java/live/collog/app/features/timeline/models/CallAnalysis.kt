@@ -24,6 +24,8 @@ data class CallAnalysis(
     val baseline: String,
     val acoustic: String,
     val recommendation: String,
+    /** 응급 안내(11-08 가드레일). 서버가 고정 문구로 남겼을 때만. */
+    val safetyNotice: String? = null,
 ) {
     /** 분석 대상 이름: 가족 목록에서 찾고, 내가 분석 대상이면 내 닉네임(없으면 계정 이름). 못 찾으면 "가족". */
     fun subjectName(contacts: List<FamilyContact>, me: ApiUser?): String =
@@ -66,6 +68,7 @@ fun CallAnalysis.Companion.fromBundle(
             .ifEmpty { "아직 평소 범위를 모으는 중이에요. 통화가 쌓이면 변화를 보여드릴게요." },
         acoustic = acoustic(bundle.features),
         recommendation = recommendation(bundle.extraction),
+        safetyNotice = bundle.extraction?.safetyNotice?.takeIf { it.isNotBlank() },
     )
 }
 

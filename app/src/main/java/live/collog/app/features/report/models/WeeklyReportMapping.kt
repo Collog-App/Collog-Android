@@ -2,9 +2,11 @@ package live.collog.app.features.report.models
 
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.time.ZoneId
 import live.collog.app.features.report.views.components.MetricTrend
 import live.collog.app.shared.components.chart.TrendSeries
 import live.collog.app.shared.components.stat.CallStat
+import live.collog.app.shared.services.api.CollogTimestamp
 import live.collog.app.shared.services.api.MetricLabel
 import live.collog.app.shared.services.api.ReportDto
 import live.collog.app.shared.services.api.SignalDto
@@ -13,8 +15,9 @@ import live.collog.app.shared.services.api.SignalDto
  * iOS `WeeklyReport.init(dto:trend:)`. 분석된 통화가 없으면 서버 상태와 관계없이 빈 리포트.
  * 총 통화 시간·지난주 비교·분당 되물음은 통화 목록이 있어야 계산돼서 [withCallStats]가 채운다.
  */
-fun WeeklyReport.Companion.fromDto(dto: ReportDto, trend: TrendSeries?): WeeklyReport {
-    if (dto.analyzedCallCount <= 0) return empty
+fun WeeklyReport.Companion.fromDto(dto: ReportDto, trend: TrendSeries?, zone: ZoneId = ZoneId.systemDefault()): WeeklyReport {
+    val notices = safetyNotices(dto, zone)
+    if (dto.analyzedCallCount <= 0) return empty.copy(safetyNotices = notices)
 
     val labels = mapOf("symptom" to "증상", "medication" to "복약", "activity" to "활동", "sleep" to "수면")
     val symbols = mapOf(
@@ -59,8 +62,20 @@ fun WeeklyReport.Companion.fromDto(dto: ReportDto, trend: TrendSeries?): WeeklyR
         acousticTrend = trend,
         metricTrends = metricTrends(dto),
         disclaimer = dto.disclaimer,
+        safetyNotices = notices,
     )
 }
+
+/** 서버 고정 문구 그대로. 빈 문구는 버린다. */
+private fun safetyNotices(dto: ReportDto, zone: ZoneId): List<SafetyNotice> =
+    dto.safetyNotices.filter { it.text.isNotBlank() }.map { notice ->
+        val day = notice.observedAt?.let(CollogTimestamp::parse)?.atZone(zone)?.toLocalDate()
+        SafetyNotice(
+            callId = notice.callId,
+            dayText = day?.let { "${it.monthValue}월 ${it.dayOfMonth}일 통화" },
+            text = notice.text,
+        )
+    }
 
 private fun metricTrends(dto: ReportDto): List<MetricTrend> {
     val history = dto.recentAcousticHistory ?: dto.acousticTrends

@@ -59,6 +59,8 @@ import kotlinx.coroutines.launch
 import live.collog.app.R
 import live.collog.app.config.LocalAppEnvironment
 import live.collog.app.features.call.services.LocalCallCenter
+import live.collog.app.features.health.services.LocalHealthLink
+import live.collog.app.features.health.views.HealthLinkHintCard
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.home.models.FamilyHealthSummary
 import live.collog.app.features.home.viewmodels.HomeViewModel
@@ -127,6 +129,7 @@ private fun HomeRoot(viewModel: HomeViewModel) {
     val navigation = LocalNavigationManager.current
     val tabManager = LocalTabManager.current
     val callCenter = LocalCallCenter.current
+    val healthLink = LocalHealthLink.current
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     val refreshState = rememberPullToRefreshState()
@@ -261,6 +264,12 @@ private fun HomeRoot(viewModel: HomeViewModel) {
                 if (viewModel.healthFeedback != null) {
                     Spacer(Modifier.height(17.dp))
                     FeedbackShortcut { navigation.push(Route.HealthFeedbackDetail) }
+                }
+
+                // 건강 앱 연결 안내(피그마 없음): 아직 연결 안 했고 쓸 수 있는 기기일 때, 닫으면 다시 안 띄운다
+                if (healthLink.shouldShowHint(environment)) {
+                    Spacer(Modifier.height(17.dp))
+                    HealthLinkHintCard(onConnect = { healthLink.present() }, onClose = { healthLink.dismissHint(environment) })
                 }
             }
         }

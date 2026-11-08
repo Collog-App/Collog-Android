@@ -15,6 +15,7 @@ coreTelecom = "1.0.1"
 fragment = "1.9.1"
 work = "2.12.0"
 kakao = "2.26.0"
+healthConnect = "1.1.0"
 firebaseBom = "35.1.0"
 googleServices = "4.5.0"
 junit = "4.13.2"
@@ -46,6 +47,7 @@ androidx-fragment = { group = "androidx.fragment", name = "fragment", version.re
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 kakao-user = { group = "com.kakao.sdk", name = "v2-user", version.ref = "kakao" }
 androidx-core-telecom = { group = "androidx.core", name = "core-telecom", version.ref = "coreTelecom" }
+androidx-health-connect-client = { group = "androidx.health.connect", name = "connect-client", version.ref = "healthConnect" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 

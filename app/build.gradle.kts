@@ -80,6 +80,7 @@ dependencies {
     implementation(libs.androidx.core.telecom)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.kakao.user)
+    implementation(libs.androidx.health.connect.client)
     // 의존성이 끌어오는 옛 fragment(<1.3) 대신: registerForActivityResult 요구 사항
     implementation(libs.androidx.fragment)
     implementation(platform(libs.firebase.bom))

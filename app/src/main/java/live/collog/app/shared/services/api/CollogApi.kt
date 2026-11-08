@@ -307,6 +307,47 @@ class CollogApi(val client: CollogApiClient) {
         )
     }
 
+    /** 내 건강 앱 연결 상태와 선택 동의 문서. */
+    suspend fun healthLink(): HealthLinkStatusDto = client.send(ApiEndpoint(path = "/v1/health/link"))
+
+    /** 동의하고 연결. 문서 판이 바뀌었으면 409 `HEALTH_CONSENT_VERSION_MISMATCH`. */
+    suspend fun connectHealthLink(version: String, platform: String = HEALTH_PLATFORM): HealthLinkStatusDto =
+        client.send(
+            ApiEndpoint(
+                path = "/v1/health/link",
+                method = HttpMethod.POST,
+                body = body(HealthLinkBody(version = version, platform = platform)),
+            ),
+        )
+
+    /** 연결 끊기(철회). 서버가 저장된 건강 요약을 바로 지운다(204). */
+    suspend fun disconnectHealthLink() {
+        client.sendRaw(ApiEndpoint(path = "/v1/health/link", method = HttpMethod.DELETE))
+    }
+
+    /** 이 기기의 하루 요약 올리기. 연결 상태가 아니면 403 `HEALTH_LINK_REQUIRED`. */
+    suspend fun uploadHealthDaily(days: List<HealthDayDto>, platform: String = HEALTH_PLATFORM): HealthDailyUploadResult =
+        client.send(
+            ApiEndpoint(
+                path = "/v1/health/daily",
+                method = HttpMethod.PUT,
+                body = body(HealthDailyUploadBody(platform = platform, days = days)),
+            ),
+        )
+
+    /** [from]·[to]는 "YYYY-MM-DD"(최대 62일). */
+    suspend fun parentHealthDaily(parentId: String, from: String, to: String): ParentHealthDailyDto =
+        client.send(
+            ApiEndpoint(
+                path = "/v1/parents/$parentId/health/daily",
+                query = listOf("from" to from, "to" to to),
+            ),
+        )
+
     private inline fun <reified T> body(value: T): ApiBody<T> = ApiBody(value, serializer<T>())
+
+    companion object {
+        const val HEALTH_PLATFORM = "HEALTH_CONNECT"
+    }
 }
 

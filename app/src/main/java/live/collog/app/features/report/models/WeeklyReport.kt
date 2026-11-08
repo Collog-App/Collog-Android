@@ -47,7 +47,10 @@ data class RepeatObservation(
     val caption: String,
 )
 
-/** iOS `WeeklyReport`. */
+/** 응급 안내(2026-11-08 가드레일). [dayText]는 「11월 7일 통화」, 시각을 못 읽으면 null. */
+data class SafetyNotice(val callId: String, val dayText: String?, val text: String)
+
+/** iOS `WeeklyReport`. [safetyNotices]는 iOS 에 아직 없다. */
 data class WeeklyReport(
     val state: ReportState,
     val noticeText: String?,
@@ -58,6 +61,7 @@ data class WeeklyReport(
     val acousticTrend: TrendSeries?,
     val metricTrends: List<MetricTrend>,
     val disclaimer: String,
+    val safetyNotices: List<SafetyNotice> = emptyList(),
 ) {
     companion object {
         val empty = WeeklyReport(

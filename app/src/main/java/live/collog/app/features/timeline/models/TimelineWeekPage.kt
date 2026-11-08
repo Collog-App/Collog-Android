@@ -7,6 +7,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.time.temporal.WeekFields
+import live.collog.app.features.health.models.LifeRecord
 import live.collog.app.features.report.models.WeeklyReport
 import live.collog.app.shared.services.api.ApiFormat
 import live.collog.app.shared.services.api.CallSummaryDto
@@ -23,6 +24,8 @@ data class TimelineWeekPage(
     val isLoaded: Boolean = false,
     val reportError: String? = null,
     val timelineError: String? = null,
+    /** 리포트 「생활 기록」. 못 받았거나(서버 미지원·공유 막힘) 타임라인 탭이면 null 이라 숨긴다. */
+    val lifeRecord: LifeRecord? = null,
 ) {
     val id: Int get() = offset
 

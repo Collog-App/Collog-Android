@@ -8,6 +8,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import live.collog.app.config.AppEnvironment
+import live.collog.app.features.health.models.LifeRecord
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.report.models.WeeklyReport
 import live.collog.app.features.report.models.fromDto
@@ -267,6 +268,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             } catch (e: Exception) {
                 page = page.copy(timelineError = e.message)
             }
+            if (selectedTabIndex == 0) page = page.copy(lifeRecord = lifeRecord(api, parentId, bounds))
             if (generation != contentGeneration) return
             pages = pages + (offset to page.copy(isLoaded = true))
         } finally {
@@ -301,6 +303,23 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         }
 
         return calls to result
+    }
+
+    /**
+     * 리포트 「생활 기록」: 그 주 끝(이번 주는 오늘)까지 30일을 받아 7일 막대와 최근 측정값을 만든다.
+     * 서버에 아직 API 가 없거나(404) 공유가 막혔으면 null 이라 카드를 숨긴다.
+     */
+    private suspend fun lifeRecord(api: CollogApi, parentId: String, bounds: WeekBounds): LifeRecord? {
+        val today = TimelineWeekPage.today()
+        val end = minOf(bounds.end, today)
+        val dto = orNull {
+            api.parentHealthDaily(
+                parentId,
+                from = TimelineWeekPage.isoDate.format(end.minusDays(29)),
+                to = TimelineWeekPage.isoDate.format(end),
+            )
+        } ?: return null
+        return LifeRecord.from(dto, end, today)
     }
 
     /** 새 피그마 「평소 N분」: 분석된 최근 통화(최대 10건)의 평균 길이. 3건 미만이면 null. */

@@ -65,6 +65,8 @@ import live.collog.app.features.call.views.ActiveCallScreen
 import live.collog.app.features.call.views.CallErrorAlert
 import live.collog.app.features.call.views.CallLauncherOverlay
 import live.collog.app.features.call.views.CallScreen
+import live.collog.app.features.health.services.LocalHealthLink
+import live.collog.app.features.health.views.HealthLinkSheetHost
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.home.views.HomeScreen
 import live.collog.app.features.settings.views.SettingsScreen
@@ -87,6 +89,7 @@ import live.collog.app.shared.ui.designsystem.CollogType
 fun RootScreen() {
     val environment = LocalAppEnvironment.current
     val callCenter = LocalCallCenter.current
+    val healthLink = LocalHealthLink.current
     val context = LocalContext.current
     val tabManager = remember { TabManager() }
     var navigation by remember { mutableStateOf(NavigationStore()) }
@@ -162,6 +165,8 @@ fun RootScreen() {
         if (environment.session.isAuthenticated) {
             callCenter.resumePendingUploads()
             callCenter.updateNotificationAuthorization()
+            // 건강 앱 요약은 앱이 앞으로 올 때 하루 한 번 이하로 보낸다(가입을 마친 뒤에만)
+            if (authFlow.step == AuthFlowViewModel.Step.Ready) scope.launch { healthLink.syncIfDue(environment) }
         }
     }
     // OnChange는 첫 그림의 값을 건너뛰어, 꺼진 앱에서 알림을 눌러 그리기 전에 오른 번호를 놓친다.
@@ -267,6 +272,7 @@ private fun MainTabs(
     onStartCall: (FamilyContact) -> Unit,
 ) {
     val environment = LocalAppEnvironment.current
+    val healthLink = LocalHealthLink.current
     val family = environment.family
 
     fun syncLauncher() {
@@ -286,6 +292,10 @@ private fun MainTabs(
     LaunchedEffect(Unit) {
         family.refresh(environment)
         syncLauncher()
+    }
+    LaunchedEffect(Unit) {
+        healthLink.ensureStatus(environment)
+        healthLink.syncIfDue(environment)
     }
     OnChange(family.contacts) { _, _ -> syncLauncher() }
     OnChange(family.selectedQuestionTexts) { _, _ -> syncLauncher() }
@@ -333,5 +343,8 @@ private fun MainTabs(
             onReselect = ::reselect,
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
         )
+
+        // 설정·홈·리포트의 「건강 앱 연결」이 여는 시트. 권한 창 결과를 받으려고 탭 화면에 늘 둔다.
+        HealthLinkSheetHost()
     }
 }
