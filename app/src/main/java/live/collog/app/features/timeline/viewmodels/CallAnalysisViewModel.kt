@@ -39,6 +39,14 @@ class CallAnalysisViewModel(private val callId: String) {
             "ANALYSIS_EXCLUDED" -> return CallAnalysisState.Unavailable(
                 "분석 대상에서 제외된 통화예요.",
                 "동의가 없거나 대화가 짧은 통화는 분석하지 않아요.",
+                // 짧아서 제외된 통화도 응급 표현이 있으면 서버가 안내를 만든다. 없거나(404)·실패하면 조용히 넘긴다.
+                safetyNotice = try {
+                    api.extraction(callId).safetyNotice?.takeIf { it.isNotBlank() }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                },
             )
             "ANALYSIS_FAILED" -> return CallAnalysisState.Unavailable("통화를 분석하지 못했어요.", null)
             else -> return CallAnalysisState.Pending

@@ -44,7 +44,7 @@ sealed interface CallAnalysisState {
     data object Pending : CallAnalysisState
 
     /** 분석에서 빠졌거나(ANALYSIS_EXCLUDED) 분석하지 못한(ANALYSIS_FAILED) 통화. */
-    data class Unavailable(val title: String, val message: String?) : CallAnalysisState
+    data class Unavailable(val title: String, val message: String?, val safetyNotice: String? = null) : CallAnalysisState
 
     data class Error(val message: String) : CallAnalysisState
 

@@ -167,12 +167,14 @@ class CallAnalysisTests {
     private fun callJson(state: String) =
         """{"callId":"c1","parentId":"mom","childId":"me","state":"$state","startedAt":"2026-11-05T03:00:00Z","durationSec":600,"recorded":true}"""
 
-    private fun serve(fixture: TestEnvironment, state: String, extractionStatus: Int = 200) {
+    private fun serve(fixture: TestEnvironment, state: String, extractionStatus: Int = 200, extractionBody: String? = null) {
         fixture.respond = { request ->
             when (request.url.encodedPath) {
                 "/v1/calls/c1" -> 200 to callJson(state)
                 "/v1/calls/c1/extraction" ->
-                    if (extractionStatus == 200) {
+                    if (extractionBody != null) {
+                        extractionStatus to extractionBody
+                    } else if (extractionStatus == 200) {
                         200 to """{"callId":"c1","parseStatus":"OK","sleep":"잠을 깊게 못 주무셨어요","facts":[]}"""
                     } else {
                         extractionStatus to """{"code":"NOT_FOUND","message":"추출 결과가 아직 없습니다"}"""
@@ -227,10 +229,42 @@ class CallAnalysisTests {
         assertEquals("분석 대상에서 제외된 통화예요.", (excluded.state as CallAnalysisState.Unavailable).title)
 
         serve(fixture, "ANALYSIS_FAILED")
+        fixture.paths.clear() // 제외된 통화는 응급 안내를 보려고 extraction 을 읽는다. 실패한 통화는 읽지 않는다.
         val failed = CallAnalysisViewModel("c1")
         failed.load(fixture.environment)
         assertEquals("통화를 분석하지 못했어요.", (failed.state as CallAnalysisState.Unavailable).title)
         assertFalse(fixture.paths.any { it.endsWith("/extraction") })
+    }
+
+    @Test
+    fun excludedCallShowsSafetyNoticeWhenServerHasOne() = withFixture { fixture ->
+        serve(
+            fixture,
+            "ANALYSIS_EXCLUDED",
+            extractionBody = """{"callId":"c1","parseStatus":"EXCLUDED","facts":[],"safetyNotice":"응급 안내 문구"}""",
+        )
+        val model = CallAnalysisViewModel("c1")
+        model.load(fixture.environment)
+
+        val state = model.state as CallAnalysisState.Unavailable
+        assertEquals("분석 대상에서 제외된 통화예요.", state.title)
+        assertEquals("응급 안내 문구", state.safetyNotice)
+    }
+
+    @Test
+    fun excludedCallWithoutNoticeKeepsPlainScreen() = withFixture { fixture ->
+        for (status in listOf(404, 500)) {
+            serve(fixture, "ANALYSIS_EXCLUDED", extractionStatus = status)
+            val model = CallAnalysisViewModel("c1")
+            model.load(fixture.environment)
+            val state = model.state as CallAnalysisState.Unavailable
+            assertEquals("분석 대상에서 제외된 통화예요.", state.title)
+            assertEquals(null, state.safetyNotice)
+        }
+        serve(fixture, "ANALYSIS_EXCLUDED", extractionBody = """{"callId":"c1","parseStatus":"EXCLUDED","facts":[]}""")
+        val model = CallAnalysisViewModel("c1")
+        model.load(fixture.environment)
+        assertEquals(null, (model.state as CallAnalysisState.Unavailable).safetyNotice)
     }
 
     @Test

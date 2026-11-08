@@ -75,11 +75,19 @@ fun CallAnalysisScreen(callId: String) {
                 actionTitle = "새로고침",
                 action = reload,
             )
-            is CallAnalysisState.Unavailable -> EmptyState(
-                symbol = "exclamationmark.circle",
-                title = state.title,
-                message = state.message,
-            )
+            is CallAnalysisState.Unavailable -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                state.safetyNotice?.let {
+                    SafetyNoticeCard(
+                        it,
+                        Modifier.padding(horizontal = Spacing.screenHorizontal).padding(top = 27.dp),
+                    )
+                }
+                EmptyState(
+                    symbol = "exclamationmark.circle",
+                    title = state.title,
+                    message = state.message,
+                )
+            }
             is CallAnalysisState.Error -> EmptyState(
                 symbol = "exclamationmark.circle",
                 title = "데이터를 불러오지 못했어요.",
