@@ -350,6 +350,31 @@ class HealthLinkTests {
     }
 
     @Test
+    fun recordsThatArriveLaterOnTheConnectingDayAreSentWhenTheAppComesBack() = withLink { fixture, link, source, _ ->
+        source.records = HealthRecords()
+        fixture.respond = { request ->
+            when (request.method) {
+                "GET" -> 200 to status(connected = false)
+                "POST" -> 200 to status(connected = true)
+                "PUT" -> 200 to """{"saved":14,"lastSyncedDay":"2026-11-08"}"""
+                else -> 500 to "{}"
+            }
+        }
+        link.prepare(fixture.environment)
+        link.beginConnect((link.step as HealthLinkStep.Consent).document)
+        link.completeConnect(fixture.environment)
+
+        // 아직 보낸 적이 없고 기록도 없으면, 앱이 다시 앞으로 와도 보내지 않는다
+        link.syncIfDue(fixture.environment)
+        assertTrue(fixture.puts().isEmpty())
+
+        // 같은 날 건강 앱 공유를 켜서 기록이 생겼다
+        source.records = HealthRecords(stepsByDay = mapOf(today to 100L))
+        link.syncIfDue(fixture.environment)
+        assertEquals(1, fixture.puts().size)
+    }
+
+    @Test
     fun signingOutRevokesHealthConnectPermissionsOnlyWhenSomeWereGranted() = withLink { _, link, source, _ ->
         source.granted = emptySet()
         link.revokePermissions()

@@ -230,7 +230,7 @@ class HealthLink(
         }
         setStatus(userId, HealthLinkStatus.Loaded(link.copy(connected = true)))
         val before = revision
-        sync(environment, force = true, justConnected = true)
+        sync(environment, force = true)
         // 리포트는 동기화가 끝난 뒤 한 번만 다시 불러오게 한다
         if (revision == before) revision += 1
         step = linkedStep(currentLink(userId) ?: link, justConnected = true, hasPermission = true)
@@ -293,9 +293,10 @@ class HealthLink(
 
     /**
      * 최근 14일을 다시 계산해 올린다. 서버는 같은 날짜를 통째로 바꾸므로, Health Connect 에서 지운 기록도 서버에서
-     * 지워지게 값이 하나도 없는 날도 보낸다. 다만 연결 직후([justConnected])에 기록이 하나도 없으면 보내지 않는다.
+     * 지워지게 값이 하나도 없는 날도 보낸다. 다만 서버에 아직 한 번도 보낸 적이 없는데 기록이 하나도 없으면 보내지 않고,
+     * 오늘 보냈다고 적지도 않는다. 건강 앱 공유를 나중에 켜도 그날 앱을 다시 열 때 보내게 하려는 것이다.
      */
-    private suspend fun sync(environment: AppEnvironment, force: Boolean, justConnected: Boolean = false): Boolean = syncMutex.withLock {
+    private suspend fun sync(environment: AppEnvironment, force: Boolean): Boolean = syncMutex.withLock {
         val userId = userId(environment) ?: return@withLock false
         val day = today()
         if (!force && prefs.getString(syncKey(userId), null) == day.toString()) return@withLock true
@@ -312,10 +313,7 @@ class HealthLink(
             Log.w(TAG, "Health Connect 기록을 읽지 못했어요", e)
             return@withLock false
         }
-        if (justConnected && summaries.none { it.hasAnyValue }) {
-            markSynced(userId, day)
-            return@withLock true
-        }
+        if (summaries.none { it.hasAnyValue } && currentLink(userId)?.lastSyncedDay == null) return@withLock true
 
         var failure = upload(environment, userId, day, summaries) ?: return@withLock true
         if (failure is ApiError.Server && failure.status == 422) {
