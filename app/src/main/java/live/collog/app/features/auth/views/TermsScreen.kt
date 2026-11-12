@@ -240,7 +240,8 @@ private fun CheckRow(
 
 /**
  * 피그마 05 Call Out(269:3962)의 세 덩어리에 서버 동의 문서를 나눠 담는다:
- * 수집·이용 목적(목적, 수집 항목) / 원본 오디오 처리 원칙(원본 음성, 보관 기간) / 동의 범위 및 권리(동의 항목, 안내 전문).
+ * 수집·이용 목적(목적, 수집 항목) / 원본 오디오 처리 원칙(원본 음성, 보관 기간) / 동의 범위 및 권리(동의 항목, 받는 곳).
+ * 안내 전문은 「자세히 보기」 페이지에 두고, 여기에는 외부 AI 서비스마다 무엇을 보내는지만 둔다(iOS 동의 화면과 같은 구조).
  */
 @Composable
 private fun ConsentDocumentCallout(document: ConsentDocument, onOpenPolicy: () -> Unit) {
@@ -250,8 +251,9 @@ private fun ConsentDocumentCallout(document: ConsentDocument, onOpenPolicy: () -
         DocumentBlock(
             "동의 범위 및 권리",
             "동의 항목: " + document.requiredItems.joinToString(", ") { ConsentItemLabel.korean(it) },
-            document.fullText,
-        )
+        ) {
+            ThirdPartyAiDisclosure(Modifier.padding(start = 22.dp), showsPolicyLink = false)
+        }
         Text(
             "개인정보처리방침 전문 보기",
             style = pretendard(Pretendard.Regular, 14f).copy(textDecoration = TextDecoration.Underline),
@@ -263,14 +265,19 @@ private fun ConsentDocumentCallout(document: ConsentDocument, onOpenPolicy: () -
 
 /** 피그마 05 한 덩어리: 안내 아이콘과 제목, 글머리표 문단, 그 아래 같은 들여쓰기의 문단. */
 @Composable
-private fun DocumentBlock(title: String, lead: String, detail: String) {
+private fun DocumentBlock(title: String, lead: String, detail: String) = DocumentBlock(title, lead) {
+    Text(detail, style = CollogType.body02Regular, color = CollogColors.gray800, modifier = Modifier.padding(start = 22.dp))
+}
+
+@Composable
+private fun DocumentBlock(title: String, lead: String, detail: @Composable () -> Unit) {
     InfoIconRow {
         Box(Modifier.height(24.dp), contentAlignment = Alignment.CenterStart) {
             Text(title, style = pretendard(Pretendard.SemiBold, 14f), color = CollogColors.gray800)
         }
         Column(Modifier.padding(top = Spacing.x4), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             SettingsBullet(lead)
-            Text(detail, style = CollogType.body02Regular, color = CollogColors.gray800, modifier = Modifier.padding(start = 22.dp))
+            detail()
         }
     }
 }

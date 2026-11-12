@@ -23,8 +23,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -47,7 +45,8 @@ import live.collog.app.shared.ui.designsystem.pretendardPlain
 import live.collog.app.shared.ui.pressable
 
 /**
- * iOS `ConsentView`. 문서 끝까지 스크롤하고 필수 항목을 모두 체크해야 동의할 수 있다.
+ * iOS `ConsentView`. 받는 곳(외부 AI 서비스)과 법정 고지를 보여 주고, 필수 항목을 모두 체크해야 동의할 수 있다.
+ * 전문은 「자세히 보기」 페이지에 둔다. 체크 줄과 동의 버튼이 고지 아래에 있어 동의하려면 고지를 지나가야 한다.
  * 가입 때는 약관 화면(TermsScreen)이 동의를 받고, 이 화면은 설정의 「통화 분석 동의 확인 및 변경」에서만 쓴다.
  */
 @Composable
@@ -57,18 +56,16 @@ fun ConsentScreen(onAgreed: () -> Unit) {
 
     var document by remember { mutableStateOf<ConsentDocument?>(null) }
     var agreedItems by remember { mutableStateOf(emptySet<String>()) }
-    var hasReachedEnd by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val allAgreed = document?.let { agreedItems.containsAll(it.requiredItems) } ?: false
-    val canSubmit = hasReachedEnd && allAgreed && !isSubmitting && !isLoading
+    val canSubmit = allAgreed && !isSubmitting && !isLoading
 
     suspend fun load() {
         isLoading = true
         errorMessage = null
-        hasReachedEnd = false
         agreedItems = emptySet()
         document = null
         try {
@@ -95,7 +92,8 @@ fun ConsentScreen(onAgreed: () -> Unit) {
                     documentVersion = current.version,
                     agreedItems = if (granted) agreedItems.sorted() else emptyList(),
                     decision = if (granted) "GRANT" else "DENY",
-                    scrolledToEnd = granted && hasReachedEnd,
+                    // 체크 줄과 동의 버튼이 고지 아래에 있어, 동의하려면 고지를 다 지나가야 한다.
+                    scrolledToEnd = granted,
                 )
                 if (environment.session.user?.id != userId) {
                     isSubmitting = false
@@ -115,14 +113,6 @@ fun ConsentScreen(onAgreed: () -> Unit) {
 
     // iOS `.id(document?.version)`: 문서가 바뀌면 스크롤 상태를 새로 만든다.
     val scroll = remember(document?.version) { ScrollState(0) }
-    // 레이아웃이 끝난 뒤 끝까지 내려갔는지(또는 한 화면에 다 들어오는지) 본다.
-    LaunchedEffect(document?.version, isLoading) {
-        if (document == null || isLoading) return@LaunchedEffect
-        withFrameNanos { }
-        snapshotFlow { scroll.value >= scroll.maxValue - 8 }.collect { reachedEnd ->
-            if (reachedEnd) hasReachedEnd = true
-        }
-    }
 
     Column(
         Modifier
@@ -154,7 +144,7 @@ fun ConsentScreen(onAgreed: () -> Unit) {
         ) {
             val shown = document
             if (shown != null) {
-                Text(shown.fullText, style = CollogType.body02Medium, color = CollogColors.gray900)
+                ThirdPartyAiDisclosure()
                 InfoRow("수집 항목", shown.collectedItems.joinToString(", "))
                 InfoRow("이용 목적", shown.purpose)
                 InfoRow("보관 기간", shown.retentionPeriod)
@@ -199,7 +189,7 @@ fun ConsentScreen(onAgreed: () -> Unit) {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    if (hasReachedEnd) "동의하고 시작하기" else "끝까지 읽어주세요",
+                    "동의하고 시작하기",
                     style = CollogType.body01Semibold,
                     color = CollogColors.gray00,
                 )
