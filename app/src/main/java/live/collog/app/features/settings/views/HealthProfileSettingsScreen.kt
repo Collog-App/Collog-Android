@@ -52,7 +52,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import live.collog.app.R
 import live.collog.app.config.LocalAppEnvironment
+import live.collog.app.features.settings.models.CONCERNS_CAPTION
+import live.collog.app.features.settings.models.CONCERNS_LABEL
 import live.collog.app.features.settings.models.CONCERNS_LIMIT
+import live.collog.app.features.settings.models.CONCERNS_PLACEHOLDER
 import live.collog.app.features.settings.models.GuestSamples
 import live.collog.app.features.settings.models.HealthSelection
 import live.collog.app.features.settings.models.ProfileTarget
@@ -88,8 +91,8 @@ internal val SpecHealthConditions: List<Pair<String, String>> = listOf(
 )
 
 /**
- * 새 피그마 16 「설정 · 나의 건강 프로필」: 설명 카드 + 질환 5개(여러 개 선택) + 저장.
- * 자유 서술 칸은 화면에 없지만, 서버에 이미 있는 값(`concerns`)은 읽어 둔 그대로 다시 보낸다.
+ * 새 피그마 16 「설정 · 나의 건강 프로필」: 설명 카드 + 질환 5개(여러 개 선택) + 목록에 없는 질환·걱정되는 부분 + 저장.
+ * 자유 입력 칸(`concerns`)은 피그마에 없던 것으로, 11-15 기획 피드백(주어진 질환 외에 직접 쓰게)으로 넣었다.
  * 이 화면에 없는 예전 값(건망증·호흡기 질환·비염)도 지우지 않고 그대로 돌려보낸다.
  * [target]이 null이면 나의 건강 프로필, 아니면 그 가족 구성원의 것. [inSheet]면 위쪽 상태 막대 여백을 두지 않는다.
  */
@@ -178,7 +181,8 @@ internal fun HealthProfileSettingsScreen(target: ProfileTarget?, onBack: () -> U
         Modifier
             .fillMaxSize()
             .background(SpecColors.page)
-            .then(if (inSheet) Modifier else Modifier.statusBarsPadding()),
+            .then(if (inSheet) Modifier else Modifier.statusBarsPadding())
+            .imePadding(),
     ) {
         SpecDetailHeader(if (target == null) "나의 건강 프로필" else "가족 건강 프로필", onBack = onBack)
 
@@ -218,6 +222,9 @@ internal fun HealthProfileSettingsScreen(target: ProfileTarget?, onBack: () -> U
             }
 
             Spacer(Modifier.height(2.dp))
+            SpecConcernsField(concerns, enabled = profileLoaded && !isSaving) { concerns = it.take(CONCERNS_LIMIT) }
+
+            Spacer(Modifier.height(2.dp))
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -240,6 +247,36 @@ internal fun HealthProfileSettingsScreen(target: ProfileTarget?, onBack: () -> U
                     if (!profileLoaded) SystemTextButton("다시 시도", enabled = !isLoading) { scope.launch { load() } }
                 }
             }
+        }
+    }
+}
+
+/** 목록에 없는 질환·걱정되는 부분(서버 `concerns`). 가입 편집기와 같은 문구를 새 피그마 카드 모양으로. */
+@Composable
+private fun SpecConcernsField(value: String, enabled: Boolean, onValueChange: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("$CONCERNS_LABEL (선택)", style = specText(Pretendard.Medium, 12.5f))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            textStyle = specText(Pretendard.Regular, 13f),
+            decorationBox = { field ->
+                Box(
+                    Modifier
+                        .specCard(padding = 0.dp, radius = 14.dp)
+                        .fillMaxWidth()
+                        .heightIn(min = 88.dp)
+                        .padding(horizontal = 17.dp, vertical = 14.dp),
+                ) {
+                    if (value.isEmpty()) Text(CONCERNS_PLACEHOLDER, style = specText(Pretendard.Regular, 13f, SpecColors.muted))
+                    field()
+                }
+            },
+        )
+        Row {
+            Text(CONCERNS_CAPTION, Modifier.weight(1f), style = specText(Pretendard.Regular, 11f, SpecColors.muted))
+            Text("${value.length}/$CONCERNS_LIMIT", style = specText(Pretendard.Regular, 11f, SpecColors.muted))
         }
     }
 }
@@ -291,7 +328,7 @@ internal fun HealthProfileEditor(
     var isPickerOpen by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
-    val canSave = canSaveHealthProfile(profileLoaded = true, selection = selection, isSaving = isSaving, isLoading = false)
+    val canSave = canSaveHealthProfile(profileLoaded = true, selection = selection, isSaving = isSaving, isLoading = false, note = concerns)
 
     fun save() {
         if (!canSave) return
@@ -341,7 +378,7 @@ internal fun HealthProfileEditor(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.x1)) {
-                FieldLabel("추가적으로 걱정되는 부분을 작성해주세요.") {
+                FieldLabel(CONCERNS_LABEL) {
                     Text("선택", style = pretendard(Pretendard.Regular, 12f), color = CollogColors.gray700)
                 }
                 BasicTextField(
@@ -359,19 +396,21 @@ internal fun HealthProfileEditor(
                                 .padding(horizontal = Spacing.x5, vertical = Spacing.x3),
                         ) {
                             if (concerns.isEmpty()) {
-                                Text("내용을 작성해주세요.", style = pretendardPlain(Pretendard.Medium, 16f, CollogColors.gray600))
+                                Text(CONCERNS_PLACEHOLDER, style = pretendardPlain(Pretendard.Medium, 16f, CollogColors.gray600))
                             }
                             field()
                         }
                     },
                 )
-                Text(
-                    "${concerns.length}/$CONCERNS_LIMIT",
-                    style = pretendard(Pretendard.Regular, 12f),
-                    color = CollogColors.gray700,
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Row {
+                    Text(CONCERNS_CAPTION, Modifier.weight(1f), style = pretendard(Pretendard.Regular, 12f), color = CollogColors.gray700)
+                    Text(
+                        "${concerns.length}/$CONCERNS_LIMIT",
+                        style = pretendard(Pretendard.Regular, 12f),
+                        color = CollogColors.gray700,
+                        textAlign = TextAlign.End,
+                    )
+                }
             }
 
             // 피그마 12의 안내 상자 자리(269:3925)에 고른 질환 설명(277:5137)을 둔다

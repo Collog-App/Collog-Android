@@ -236,6 +236,9 @@ class SettingsLogicTests {
         assertFalse(canSaveHealthProfile(true, HealthSelection(), isSaving = false, isLoading = false))
         assertFalse(canSaveHealthProfile(true, chosen, isSaving = true, isLoading = false))
         assertFalse(canSaveHealthProfile(true, chosen, isSaving = false, isLoading = true))
+        // 목록에 없는 질환만 적은 경우
+        assertTrue(canSaveHealthProfile(true, HealthSelection(), isSaving = false, isLoading = false, note = "관절염"))
+        assertFalse(canSaveHealthProfile(true, HealthSelection(), isSaving = false, isLoading = false, note = "  "))
     }
 
     @Test

@@ -197,12 +197,22 @@ internal data class HealthSelection(
     }
 }
 
-/** iOS `HealthProfileSettingsView.canSave`. */
-internal fun canSaveHealthProfile(profileLoaded: Boolean, selection: HealthSelection, isSaving: Boolean, isLoading: Boolean): Boolean =
-    profileLoaded && selection.isChosen && !isSaving && !isLoading
+/** iOS `HealthProfileSettingsView.canSave`. 목록에 없는 질환만 있는 사람도 있어 [note]를 썼으면 고르지 않아도 된다. */
+internal fun canSaveHealthProfile(
+    profileLoaded: Boolean,
+    selection: HealthSelection,
+    isSaving: Boolean,
+    isLoading: Boolean,
+    note: String = "",
+): Boolean = profileLoaded && (selection.isChosen || note.isNotBlank()) && !isSaving && !isLoading
 
 /** 걱정되는 부분 글자 수 상한(서버 `concerns` max_length). */
 internal const val CONCERNS_LIMIT = 500
+
+/** 질환 목록 아래 자유 입력 칸(서버 `concerns`). iOS `ConditionNoteField`와 같은 문구. */
+internal const val CONCERNS_LABEL = "목록에 없는 질환이나 걱정되는 부분"
+internal const val CONCERNS_PLACEHOLDER = "예: 관절염이 있어요. 요즘 잠을 잘 못 자요."
+internal const val CONCERNS_CAPTION = "적은 내용은 가족도 건강 프로필에서 볼 수 있어요."
 
 /** 체험 모드에서 보이는 예시. 네트워크를 부르지 않는다. */
 internal object GuestSamples {
