@@ -11,10 +11,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -73,6 +77,7 @@ import live.collog.app.shared.components.chart.TrendSeries
 import live.collog.app.shared.components.chart.smoothPath
 import live.collog.app.shared.components.emptystate.AnalysisEmptyState
 import live.collog.app.shared.components.emptystate.EmptyState
+import live.collog.app.shared.components.tabbar.BottomNavBar
 import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.navigation.LocalTabManager
 import live.collog.app.shared.navigation.Route
@@ -176,7 +181,15 @@ private fun HomeRoot(viewModel: HomeViewModel) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { scope.launch { todoViewModel.load(environment) } }
     OnChange(tabManager.reselectionCount) { _, _ -> scrollState.animateScrollTo(0, tween(320)) }
 
-    Column(Modifier.fillMaxSize().background(SpecColors.page)) {
+    // 할 일 입력칸이 키보드에 가리지 않게 스크롤 영역을 키보드 위로 줄인다(edge-to-edge 라 직접 반영).
+    // RootScreen 이 탭 바와 내비게이션 바 높이만큼 이미 비워 두므로 그만큼은 빼고 둔다.
+    val reservedBottom = WindowInsets(bottom = BottomNavBar.barHeight).add(WindowInsets.navigationBars)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(SpecColors.page)
+            .windowInsetsPadding(WindowInsets.ime.exclude(reservedBottom)),
+    ) {
         HomeTopBar(onNotifications = { navigation.push(Route.Notifications) })
 
         PullToRefreshBox(

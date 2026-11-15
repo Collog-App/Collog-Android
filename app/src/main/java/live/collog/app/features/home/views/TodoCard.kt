@@ -7,10 +7,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -22,6 +26,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,8 +34,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -59,6 +66,15 @@ internal fun TodoCard(viewModel: TodoViewModel) {
     var input by remember { mutableStateOf("") }
     var isAdding by remember { mutableStateOf(false) }
     val canAdd = canAddTodo(input) && !isAdding
+
+    // 입력칸에 초점이 간 뒤 키보드가 다 올라오면 입력 줄 전체를 다시 화면 안으로 올린다
+    // (초점을 받을 때는 아직 키보드가 없어 TextField 자체 이동만으로는 아래가 잘린다)
+    val inputRow = remember { BringIntoViewRequester() }
+    var inputFocused by remember { mutableStateOf(false) }
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(inputFocused, imeBottom) {
+        if (inputFocused && imeBottom > 0) inputRow.bringIntoView()
+    }
 
     fun submit() {
         if (!canAdd) return
@@ -110,7 +126,11 @@ internal fun TodoCard(viewModel: TodoViewModel) {
         // 불러오기에 실패한 동안은 추가도 실패할 가능성이 커서 입력칸을 숨긴다
         if (!viewModel.loadFailed) {
             Spacer(Modifier.height(16.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.bringIntoViewRequester(inputRow),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Box(
                     Modifier
                         .weight(1f)
@@ -130,7 +150,7 @@ internal fun TodoCard(viewModel: TodoViewModel) {
                         cursorBrush = SolidColor(SpecColors.green),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { submit() }),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().onFocusChanged { inputFocused = it.isFocused },
                     )
                 }
                 Box(
@@ -174,21 +194,23 @@ private fun TodoRow(todo: Todo, onToggle: () -> Unit, onDelete: () -> Unit) {
                 Box(circle.border(1.5.dp, SpecColors.tickNeutral, CircleShape))
             }
         }
-        Text(
-            todo.title,
-            style = specText(Pretendard.Medium, 13f, if (todo.done) SpecColors.muted else SpecColors.ink)
-                .copy(textDecoration = if (todo.done) TextDecoration.LineThrough else TextDecoration.None),
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        if (todo.isSuggested) {
-            Spacer(Modifier.size(8.dp))
+        // 제목과 추천 태그가 남는 폭을 모두 차지해 삭제 버튼이 늘 오른쪽 끝에 붙는다
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "추천",
-                style = specText(Pretendard.Bold, 10f, SpecColors.green),
-                modifier = Modifier.background(SpecColors.greenSurface, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 3.dp),
+                todo.title,
+                style = specText(Pretendard.Medium, 13f, if (todo.done) SpecColors.muted else SpecColors.ink)
+                    .copy(textDecoration = if (todo.done) TextDecoration.LineThrough else TextDecoration.None),
+                modifier = Modifier.weight(1f, fill = false),
             )
+            if (todo.isSuggested) {
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    "추천",
+                    style = specText(Pretendard.Bold, 10f, SpecColors.green),
+                    modifier = Modifier.background(SpecColors.greenSurface, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 3.dp),
+                )
+            }
         }
-        Spacer(Modifier.weight(1f))
         Box(
             Modifier
                 .size(40.dp)
