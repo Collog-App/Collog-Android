@@ -11,10 +11,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -53,6 +57,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import java.time.Instant
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -64,12 +70,14 @@ import live.collog.app.features.health.views.HealthLinkHintCard
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.home.models.FamilyHealthSummary
 import live.collog.app.features.home.viewmodels.HomeViewModel
+import live.collog.app.features.home.viewmodels.TodoViewModel
 import live.collog.app.features.settings.views.FamilyMembersSettingsScreen
 import live.collog.app.features.timeline.models.WeeklySpeechHistory
 import live.collog.app.shared.components.chart.TrendSeries
 import live.collog.app.shared.components.chart.smoothPath
 import live.collog.app.shared.components.emptystate.AnalysisEmptyState
 import live.collog.app.shared.components.emptystate.EmptyState
+import live.collog.app.shared.components.tabbar.BottomNavBar
 import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.navigation.LocalTabManager
 import live.collog.app.shared.navigation.Route
@@ -131,6 +139,7 @@ private fun HomeRoot(viewModel: HomeViewModel) {
     val callCenter = LocalCallCenter.current
     val healthLink = LocalHealthLink.current
     val scope = rememberCoroutineScope()
+    val todoViewModel = remember { TodoViewModel() }
     val scrollState = rememberScrollState()
     val refreshState = rememberPullToRefreshState()
     var isRefreshing by remember { mutableStateOf(false) }
@@ -168,9 +177,19 @@ private fun HomeRoot(viewModel: HomeViewModel) {
     }
 
     LaunchedEffect(Unit) { refresh() }
+    // 처음 보일 때와 앱으로 돌아올 때마다 불러와 새 날의 추천이 나오게 한다
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { scope.launch { todoViewModel.load(environment) } }
     OnChange(tabManager.reselectionCount) { _, _ -> scrollState.animateScrollTo(0, tween(320)) }
 
-    Column(Modifier.fillMaxSize().background(SpecColors.page)) {
+    // 할 일 입력칸이 키보드에 가리지 않게 스크롤 영역을 키보드 위로 줄인다(edge-to-edge 라 직접 반영).
+    // RootScreen 이 탭 바와 내비게이션 바 높이만큼 이미 비워 두므로 그만큼은 빼고 둔다.
+    val reservedBottom = WindowInsets(bottom = BottomNavBar.barHeight).add(WindowInsets.navigationBars)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(SpecColors.page)
+            .windowInsetsPadding(WindowInsets.ime.exclude(reservedBottom)),
+    ) {
         HomeTopBar(onNotifications = { navigation.push(Route.Notifications) })
 
         PullToRefreshBox(
@@ -181,6 +200,7 @@ private fun HomeRoot(viewModel: HomeViewModel) {
                     try {
                         // 새로고침 표시는 최소 0.65초 보인다
                         val minimumDuration = launch { delay(650) }
+                        launch { todoViewModel.load(environment) }
                         refresh()
                         minimumDuration.join()
                     } finally {
@@ -259,6 +279,10 @@ private fun HomeRoot(viewModel: HomeViewModel) {
                     Spacer(Modifier.height(20.dp))
                     TodayQuestionsCard(questions)
                 }
+
+                // 내 할 일은 가족 선택과 상관없이 항상 보인다
+                Spacer(Modifier.height(20.dp))
+                TodoCard(todoViewModel)
 
                 // 건강 피드백 화면은 분석 결과가 있어야 그려지므로, 없으면 이 줄도 두지 않는다
                 if (viewModel.healthFeedback != null) {

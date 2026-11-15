@@ -112,6 +112,21 @@ class CollogApi(val client: CollogApiClient) {
     suspend fun dailyQuestions(parentId: String): List<ApiQuestion> =
         client.send<DailyQuestionsResponse>(ApiEndpoint(path = "/v1/parents/$parentId/daily-questions")).questions
 
+    /** 내 오늘 할 일(가족과 공유하지 않는다). 추천이 먼저, 직접 적은 것이 뒤. */
+    suspend fun todos(): TodosResponse = client.send(ApiEndpoint(path = "/v1/todos"))
+
+    /** 제목은 공백을 뗀 1~100자. 열린 할 일이 100개면 409, 비었거나 길면 422. */
+    suspend fun createTodo(title: String): Todo =
+        client.send(ApiEndpoint(path = "/v1/todos", method = HttpMethod.POST, body = body(TodoCreateBody(title))))
+
+    suspend fun setTodoDone(id: String, done: Boolean): Todo =
+        client.send(ApiEndpoint(path = "/v1/todos/$id", method = HttpMethod.PATCH, body = body(TodoDoneBody(done))))
+
+    /** 추천은 그날 숨기고 직접 적은 것은 지운다(204). */
+    suspend fun deleteTodo(id: String) {
+        client.sendRaw(ApiEndpoint(path = "/v1/todos/$id", method = HttpMethod.DELETE))
+    }
+
     suspend fun consentDocument(): ConsentDocument =
         client.send(ApiEndpoint(path = "/v1/consents/document", requiresAuth = false))
 
