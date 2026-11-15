@@ -14,6 +14,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
+    <!-- LiveKit 이 끌어오지만 음성 통화만 하는 이 앱은 쓰지 않는다(카메라, 화면 공유). Play 는 매니페스트에 있는
+         포그라운드 서비스 종류마다 선언을 요구하므로 뺀다. 아래 application 의 ScreenCaptureService 도 같이 뺀다. -->
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" tools:node="remove" />
+
     <!-- 건강 앱 연결(Health Connect): 하루 요약에 쓰는 읽기 권한만. 백그라운드·과거 기록 권한은 받지 않는다. -->
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
     <uses-permission android:name="android.permission.health.READ_STEPS" />
@@ -96,6 +101,11 @@
             android:name=".features.call.services.CallService"
             android:exported="false"
             android:foregroundServiceType="phoneCall|microphone" />
+
+        <!-- LiveKit 화면 공유 서비스(mediaProjection): 쓰지 않아 뺀다 -->
+        <service
+            android:name="io.livekit.android.room.track.screencapture.ScreenCaptureService"
+            tools:node="remove" />
 
         <receiver
             android:name=".features.call.services.CallActionReceiver"
