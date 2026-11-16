@@ -166,7 +166,7 @@ internal fun CallCenter.markCallActive() {
     val call = activeCall ?: return
     if (!serverAccepted || !isMediaConnected || !isAudioSessionActive || !microphoneReady) return
     platform.stopQuestions()
-    updateCall { it.copy(phase = CallPhase.Active) }
+    updateCall { it.copy(phase = CallPhase.Active, connectedAtMillis = it.connectedAtMillis ?: System.currentTimeMillis()) }
     if (didPublishMicrophone) attachAnalysisWriter(null)
     if (call.direction == CallCenter.Direction.Outgoing && call.phase != CallPhase.Active && call.uuid in systemCalls) {
         scope.launch { platform.callSystem.setActive(call.uuid) }

@@ -57,6 +57,7 @@ fun CallScreen(
     peerName: String,
     phase: CallPhase,
     questions: List<String>,
+    connectedAtMillis: Long? = null,
     notice: String? = null,
     isIncoming: Boolean = false,
     isAnswering: Boolean = false,
@@ -69,18 +70,20 @@ fun CallScreen(
     onSpeaker: (() -> Unit)? = null,
     onEnd: () -> Unit,
 ) {
-    var connectedAt by remember { mutableStateOf<Long?>(null) }
+    // 실제 통화는 CallCenter가 준 시각을 쓴다. 체험 통화처럼 시각이 없으면 화면이 직접 잰다.
+    var localConnectedAt by remember { mutableStateOf<Long?>(null) }
     var elapsedMillis by remember { mutableLongStateOf(0L) }
 
     // phase가 처음부터 active여도 잡히도록 initial 실행
     LaunchedEffect(phase) {
-        if (phase == CallPhase.Active && connectedAt == null) connectedAt = System.currentTimeMillis()
+        if (phase == CallPhase.Active && localConnectedAt == null) localConnectedAt = System.currentTimeMillis()
     }
-    // iOS의 1초 Timer: 틱마다 경과 시간을 갱신한다
-    LaunchedEffect(Unit) {
+    val connectedAt = connectedAtMillis ?: localConnectedAt
+    // iOS의 1초 Timer: 틱마다 경과 시간을 갱신한다. 화면이 새로 만들어져도 바로 이어진 시간을 보인다.
+    LaunchedEffect(connectedAt) {
         while (true) {
-            delay(1_000)
             connectedAt?.let { elapsedMillis = System.currentTimeMillis() - it }
+            delay(1_000)
         }
     }
 

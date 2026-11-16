@@ -47,6 +47,8 @@ class CallCenter(
         val recordingEnabled: Boolean = false,
         val isMuted: Boolean = false,
         val isSpeakerEnabled: Boolean = false,
+        /** 처음 연결된 시각. 통화 화면이 새로 만들어져도(알림으로 돌아오기 등) 시간이 이어지게 여기에 둔다. */
+        val connectedAtMillis: Long? = null,
     )
 
     enum class Direction { Incoming, Outgoing }

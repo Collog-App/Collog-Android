@@ -25,6 +25,7 @@ fun ActiveCallScreen(callCenter: CallCenter, call: CallCenter.ActiveCall) {
         CallScreen(
             peerName = call.peerName,
             phase = call.phase,
+            connectedAtMillis = call.connectedAtMillis,
             questions = call.questions,
             notice = callCenter.incomingAnswerError ?: call.notice,
             isIncoming = call.direction == CallCenter.Direction.Incoming && call.phase == CallPhase.Ringing,
