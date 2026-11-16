@@ -181,6 +181,10 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
             scope.launch { viewModel.refresh(environment, forceReload = true) }
         }
     }
+    // 분석 완료 알림을 받으면(누르지 않고 배너로만 봐도) 이미 불러 둔 리포트를 다시 읽는다
+    OnChange(environment.reportDataRevision) { _, _ ->
+        scope.launch { viewModel.refresh(environment, forceReload = true) }
+    }
     // 가족 목록보다 먼저 그려지면(꺼진 앱에서 리포트 알림을 눌러 바로 이 탭이 열림) 고를 가족이 없어 빈 화면에 머문다.
     // 목록이 오면 다시 고르고 불러온다.
     // 화면 범위에서 돌린다: 목록이 연달아 바뀌어 진행 중인 refresh가 취소되면 그 주가 로딩 중에 멈출 수 있다.

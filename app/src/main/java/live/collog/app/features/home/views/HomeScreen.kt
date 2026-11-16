@@ -177,6 +177,8 @@ private fun HomeRoot(viewModel: HomeViewModel) {
     }
 
     LaunchedEffect(Unit) { refresh() }
+    // 분석 완료 알림을 받으면(누르지 않고 배너로만 봐도) 건강 요약을 다시 읽는다
+    OnChange(environment.reportDataRevision) { _, _ -> scope.launch { refresh() } }
     // 처음 보일 때와 앱으로 돌아올 때마다 불러와 새 날의 추천이 나오게 한다
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { scope.launch { todoViewModel.load(environment) } }
     OnChange(tabManager.reselectionCount) { _, _ -> scrollState.animateScrollTo(0, tween(320)) }

@@ -25,6 +25,9 @@ class AppEnvironment(
     /** 로그아웃·탈퇴 뒤 Google 로그인 상태를 지우고 건강 앱 권한을 거둔다(CollogApplication이 넣는다). */
     var afterSignOut: (suspend () -> Unit)? = null
     var reportNotificationRevision by mutableIntStateOf(0)
+    /** 분석 완료 알림을 받을 때마다(누르지 않아도) 오른다. 리포트 화면이 이미 불러 둔 주를 다시 읽는다. */
+    var reportDataRevision by mutableIntStateOf(0)
+        private set
     /** RootScreen이 마지막으로 연 리포트 알림 번호. 첫 화면을 그리기 전에 온 알림(꺼진 앱에서 누름)도 열려고 둔다. */
     var openedReportNotificationRevision = 0
     /** 마지막으로 누른 리포트 알림의 통화. RootScreen이 리포트 탭 위에 그 통화의 분석 화면을 연다. */
@@ -70,6 +73,7 @@ class AppEnvironment(
             reportNotifications = listOf(ReceivedReportNotification(callId, title, message, Instant.now())) +
                 reportNotifications
         }
+        reportDataRevision += 1
         if (openReport) {
             openedReportCallId = callId
             reportNotificationRevision += 1
