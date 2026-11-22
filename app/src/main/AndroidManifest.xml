@@ -27,6 +27,10 @@
     <uses-permission android:name="android.permission.health.READ_BLOOD_PRESSURE" />
     <uses-permission android:name="android.permission.health.READ_BLOOD_GLUCOSE" />
 
+    <!-- 화면은 세로로 고정하지만(screenOrientation=portrait) 세로 화면이 없는 기기도 설치할 수 있게 한다.
+         선언이 없으면 Play 가 세로 화면을 필수 기능으로 보고 빠른 검사에서 경고한다. -->
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+
     <!-- Android 13 이하에서 Health Connect 앱이 설치돼 있는지 확인한다(getSdkStatus). -->
     <queries>
         <package android:name="com.google.android.apps.healthdata" />

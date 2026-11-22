@@ -17,8 +17,8 @@ android {
         applicationId = "live.collog.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.1"
+        versionCode = 34
+        versionName = "1.2"
 
         buildConfigField("String", "API_BASE_URL", "\"https://api.collog.live\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${providers.gradleProperty("collog.googleWebClientId").getOrElse("")}\"")
