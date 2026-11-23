@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -366,9 +367,13 @@ private val GuideSteps = listOf(
  */
 @Composable
 private fun FamilyConnectGuideCard(guide: FamilyConnectGuide, onPrimary: () -> Unit, onEnterCode: () -> Unit) {
-    // 한국어 낱말이 줄 끝에서 쪼개지지 않게 어절 단위로 줄을 바꾼다(Android 13 이상에서 적용)
-    val bodyStyle = specText(Pretendard.Regular, 13f, SpecColors.sub)
-        .copy(lineHeight = 20.sp, lineBreak = LineBreak.Paragraph.copy(wordBreak = LineBreak.WordBreak.Phrase))
+    // 한국어 낱말이 줄 끝에서 쪼개지지 않게 어절 단위로 줄을 바꾼다(Android 13 이상에서 적용).
+    // 어절 줄바꿈은 글자의 언어가 한국어일 때만 먹으므로, 기기 언어가 영어여도 한국어로 지정한다(문구는 한국어뿐)
+    val bodyStyle = specText(Pretendard.Regular, 13f, SpecColors.sub).copy(
+        lineHeight = 20.sp,
+        localeList = LocaleList("ko-KR"),
+        lineBreak = LineBreak.Paragraph.copy(wordBreak = LineBreak.WordBreak.Phrase),
+    )
     Column(Modifier.specCard(padding = 0.dp).padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 20.dp)) {
         Text(
             when (guide) {
