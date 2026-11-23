@@ -178,7 +178,7 @@ fun FamilySharingSettingsScreen() {
                     )
                 }
                 shares.isEmpty() && errorText == null -> Text(
-                    "아직 함께하는 가족이 없어요. 가족을 초대하면 여기에서 공유 범위를 정할 수 있어요.",
+                    "아직 함께하는 가족이 없어요. 가족과 연결되면 여기에서 공유 범위를 정할 수 있어요.",
                     style = specText(Pretendard.Regular, 14f, SpecColors.muted),
                 )
                 else -> shares.forEach { share ->
