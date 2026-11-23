@@ -96,6 +96,8 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         if (generation != contentGeneration) return
 
         val anchor = weekOffset
+        // 강제 새로고침은 지금 주만 다시 받는다. 다른 주는 공유를 다시 켠 뒤처럼 낡았을 수 있어 버리고, 보일 때 다시 받는다
+        if (forceReload) pages = pages.filterKeys { it == anchor }
         val offsets = if (forceReload) listOf(anchor) else listOf(anchor, anchor - 1, anchor + 1)
         for (offset in offsets) {
             if (offset > 0) continue

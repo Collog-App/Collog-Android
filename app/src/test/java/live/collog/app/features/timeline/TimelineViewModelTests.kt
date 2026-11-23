@@ -323,6 +323,38 @@ class TimelineViewModelTests {
     }
 
     @Test
+    fun forcedRefreshAfterSharingIsTurnedBackOnDoesNotKeepOtherWeeksNotShared() = withFixture { fixture ->
+        serve(fixture)
+        val base = fixture.respond
+        var shared = false
+        fixture.respond = { request ->
+            val path = request.path()
+            if (!shared && (path.endsWith("/reports") || path.endsWith("/calls"))) {
+                403 to """{"code":"FORBIDDEN","message":"열람 권한이 없는 항목입니다"}"""
+            } else {
+                base(request)
+            }
+        }
+        val model = TimelineViewModel()
+        model.refresh(fixture.environment)
+        assertEquals(setOf(0, -1), model.pages.keys)
+        assertTrue(model.pages.values.all { it.reportNotShared && it.timelineNotShared })
+
+        // 가족이 공유를 다시 켜고 당겨서 새로고침: 지금 주는 다시 받고, 다른 주는 버려 보일 때 다시 받는다
+        shared = true
+        model.refresh(fixture.environment, forceReload = true)
+        assertEquals(setOf(0), model.pages.keys)
+        assertFalse(model.page(0).reportNotShared)
+        assertEquals(1, model.page(0).entries.size)
+        assertFalse(model.page(-1).isLoaded)
+        assertFalse(model.page(-1).timelineNotShared)
+
+        model.loadPage(-1, fixture.environment)
+        assertFalse(model.page(-1).timelineNotShared)
+        assertEquals(1, model.page(-1).entries.size)
+    }
+
+    @Test
     fun otherServerErrorsStayLoadFailures() = withFixture { fixture ->
         serve(fixture, reportStatus = 503)
         val base = fixture.respond
