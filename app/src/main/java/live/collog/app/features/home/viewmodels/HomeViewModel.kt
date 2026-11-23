@@ -18,6 +18,7 @@ import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.home.models.FamilyHealthSummary
 import live.collog.app.features.home.models.HealthFeedback
 import live.collog.app.features.home.models.fromDto
+import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.BaselineDto
 import live.collog.app.shared.services.api.CallSummaryDto
 
@@ -34,6 +35,11 @@ class HomeViewModel {
     var recentCalls by mutableStateOf<List<CallSummaryDto>>(emptyList())
         private set
     var recentCallsError by mutableStateOf<String?>(null)
+        private set
+    /** 가족이 「가족 공유 데이터 범위」에서 리포트·타임라인 공유를 꺼 둬 서버가 막았다(403). 오류가 아니라 빈 상태로 보인다. */
+    var reportNotShared by mutableStateOf(false)
+        private set
+    var callsNotShared by mutableStateOf(false)
         private set
     /** 가족(연락처 id)마다 마지막 통화 시각. 기록이 없거나 못 불러오면 빠진다. */
     var lastCallAt by mutableStateOf<Map<String, Instant>>(emptyMap())
@@ -58,6 +64,8 @@ class HomeViewModel {
         loadError = null
         recentCalls = emptyList()
         recentCallsError = null
+        reportNotShared = false
+        callsNotShared = false
         lastCallAt = emptyMap()
         if (environment.settings.isGuestMode) {
             healthSummary = FamilyHealthSummary.sample(contact)
@@ -88,7 +96,7 @@ class HomeViewModel {
             throw e
         } catch (e: Exception) {
             if (this.generation != generation) return
-            recentCallsError = e.message
+            if (e.isNotShared) callsNotShared = true else recentCallsError = e.message
             emptyList()
         }
         if (this.generation != generation) return
@@ -114,7 +122,9 @@ class HomeViewModel {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (this.generation == generation) loadError = e.message
+            if (this.generation == generation) {
+                if (e.isNotShared) reportNotShared = true else loadError = e.message
+            }
             return
         }
         if (this.generation != generation) return
@@ -150,6 +160,9 @@ class HomeViewModel {
             }
         }.awaitAll().filterNotNull().toMap()
     }
+
+    /** 대상(`/parents/{id}/...`) 요청의 403 은 가족이 그 항목 공유를 꺼 둔 것이다(리포트·타임라인 화면과 같은 판정). */
+    private val Exception.isNotShared: Boolean get() = this is ApiError.Server && status == 403
 
     companion object {
         private val guestLastCallDays = mapOf("sample-mother" to 3L, "sample-father" to 2L)

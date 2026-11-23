@@ -64,3 +64,14 @@ fun EmptyState(
         }
     }
 }
+
+/** 가족이 「가족 공유 데이터 범위」에서 공유를 꺼 둔 항목(서버 403). 다시 시도해도 같으므로 버튼 없이 안내만(홈·리포트·타임라인). */
+@Composable
+fun NotSharedEmptyState(modifier: Modifier = Modifier) {
+    EmptyState(
+        symbol = "info.circle",
+        title = "이 가족이 공유하지 않은 항목이에요",
+        modifier = modifier,
+        message = "가족이 설정의 「가족 공유 데이터 범위」에서 공유를 켜면 볼 수 있어요.",
+    )
+}

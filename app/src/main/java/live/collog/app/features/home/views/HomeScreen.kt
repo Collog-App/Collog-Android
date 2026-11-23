@@ -87,6 +87,7 @@ import live.collog.app.shared.components.chart.TrendSeries
 import live.collog.app.shared.components.chart.smoothPath
 import live.collog.app.shared.components.emptystate.AnalysisEmptyState
 import live.collog.app.shared.components.emptystate.EmptyState
+import live.collog.app.shared.components.emptystate.NotSharedEmptyState
 import live.collog.app.shared.components.tabbar.BottomNavBar
 import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.navigation.LocalTabManager
@@ -248,7 +249,11 @@ private fun HomeRoot(viewModel: HomeViewModel) {
                     SubjectHeader(
                         name = selectedContact.name,
                         contacts = contacts,
-                        lastCallText = lastCallSentence(viewModel.lastCallAt[selectedContact.id], viewModel.isLoaded),
+                        lastCallText = lastCallSentence(
+                            viewModel.lastCallAt[selectedContact.id],
+                            viewModel.isLoaded,
+                            callsNotShared = viewModel.callsNotShared,
+                        ),
                         onSelect = ::select,
                     )
                     Spacer(Modifier.height(27.dp))
@@ -287,6 +292,9 @@ private fun HomeRoot(viewModel: HomeViewModel) {
                         actionTitle = "다시 시도",
                         action = { scope.launch { refresh() } },
                     )
+                } else if (viewModel.reportNotShared) {
+                    // 가족이 리포트 공유를 꺼 뒀다(403): 오류 카드·다시 시도 대신 리포트·타임라인과 같은 안내
+                    NotSharedEmptyState(Modifier.specCard(padding = 15.dp))
                 } else {
                     AnalysisEmptyState(
                         onStartCall = { contact ->
@@ -429,11 +437,12 @@ private fun FamilyConnectGuideCard(guide: FamilyConnectGuide, onPrimary: () -> U
     }
 }
 
-/** 「3일 전 통화했어요」. 기록이 없으면 안내 문구, 아직 불러오는 중이면 비운다. */
-internal fun lastCallSentence(latest: Instant?, isLoaded: Boolean): String? = when {
+/** 「3일 전 통화했어요」. 기록이 없으면 안내 문구(가족이 통화 기록 공유를 껐으면 그 안내), 아직 불러오는 중이면 비운다. */
+internal fun lastCallSentence(latest: Instant?, isLoaded: Boolean, callsNotShared: Boolean = false): String? = when {
     latest != null -> "${HomeViewModel.lastCallDayText(latest)} 통화했어요"
-    isLoaded -> "아직 통화 기록이 없어요"
-    else -> null
+    !isLoaded -> null
+    callsNotShared -> "통화 기록을 공유하지 않았어요"
+    else -> "아직 통화 기록이 없어요"
 }
 
 /** 새 피그마 알림 종(643:6336, 26dp). 읽지 않은 알림을 앱이 알지 못해 빨간 점은 그리지 않는다. */

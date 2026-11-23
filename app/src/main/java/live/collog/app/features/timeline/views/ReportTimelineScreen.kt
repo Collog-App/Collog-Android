@@ -64,6 +64,7 @@ import live.collog.app.features.timeline.views.components.WeekNavigator
 import live.collog.app.shared.components.spec.SubjectChip
 import live.collog.app.shared.components.emptystate.AnalysisEmptyState
 import live.collog.app.shared.components.emptystate.EmptyState
+import live.collog.app.shared.components.emptystate.NotSharedEmptyState
 import live.collog.app.shared.components.navbar.CollapsingHeaderScrollView
 import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.navigation.LocalTabManager
@@ -231,16 +232,6 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
         )
     }
 
-    // 가족이 공유를 꺼 둔 항목(서버 403): 다시 시도해도 같으므로 버튼 없이 안내만
-    @Composable
-    fun NotSharedContent() {
-        EmptyState(
-            symbol = "info.circle",
-            title = "이 가족이 공유하지 않은 항목이에요",
-            message = "가족이 설정의 「가족 공유 데이터 범위」에서 공유를 켜면 볼 수 있어요.",
-        )
-    }
-
     @Composable
     fun EmptyAnalysisContent(page: TimelineWeekPage) {
         // "나"를 골랐는데 기록이 없으면 전화·초대를 권하지 않는다(가족이 없을 때만 아래 초대 안내)
@@ -298,7 +289,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
         if (error != null) {
             ErrorContent(error, page.offset)
         } else if (page.timelineNotShared) {
-            NotSharedContent()
+            NotSharedEmptyState()
         } else if (page.entries.isEmpty()) {
             EmptyAnalysisContent(page)
         } else {
@@ -335,7 +326,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
             if (reportError != null) {
                 ErrorContent(reportError, page.offset)
             } else if (page.reportNotShared) {
-                NotSharedContent()
+                NotSharedEmptyState()
             } else if (page.report.state == ReportState.Empty) {
                 if (timelineError != null) ErrorContent(timelineError, page.offset) else EmptyAnalysisContent(page)
             } else {

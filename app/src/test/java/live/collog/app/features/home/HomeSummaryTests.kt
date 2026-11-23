@@ -120,6 +120,59 @@ class HomeSummaryTests {
             assertNull(model.healthSummary)
             assertEquals("서버 오류", model.loadError)
             assertTrue(model.isLoaded)
+            // 403 이 아닌 오류는 공유 안 함으로 보지 않는다
+            assertFalse(model.reportNotShared)
+            assertFalse(model.callsNotShared)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    private val forbidden = 403 to """{"code":"FORBIDDEN","message":"열람 권한이 없는 항목입니다"}"""
+
+    @Test
+    fun sharingTurnedOffIsNotShownAsALoadFailure() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            fixture.respond = { forbidden }
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+            assertTrue(model.reportNotShared)
+            assertTrue(model.callsNotShared)
+            assertNull(model.loadError)
+            assertNull(model.recentCallsError)
+            assertNull(model.healthSummary)
+            assertTrue(model.isLoaded)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun onlyTheCallListBlockedKeepsTheReport() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            fixture.respond = { request ->
+                when (request.url.encodedPath) {
+                    "/v1/parents/mom/calls" -> forbidden
+                    "/v1/parents/mom/baseline" -> 200 to """{"baselines":[]}"""
+                    "/v1/parents/mom/reports" -> 200 to """
+                        {"parentId":"mom","period":"WEEKLY","from":"2026-09-07","to":"2026-09-13",
+                        "state":"BASELINE_COLLECTING","disclaimer":"","promotedSignals":[],"acuteSignals":[],
+                        "conversationItems":{"activity":["산책했다고 이야기했어요."]},
+                        "repeatObservation":{"count":0,"callsWithRepeat":0,"label":""},
+                        "acousticTrends":[],"analyzedCallCount":1}
+                    """.trimIndent()
+                    else -> error("Unexpected home request ${request.url.encodedPath}")
+                }
+            }
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+            assertTrue(model.callsNotShared)
+            assertFalse(model.reportNotShared)
+            assertNull(model.recentCallsError)
+            assertNotNull(model.healthSummary)
+            assertEquals("통화 기록을 공유하지 않았어요", lastCallSentence(model.lastCallAt[mom.id], model.isLoaded, model.callsNotShared))
         } finally {
             fixture.cleanUp()
         }
@@ -246,6 +299,9 @@ class HomeSummaryTests {
         assertEquals("3일 전 통화했어요", lastCallSentence(now.minusSeconds(3 * 86_400L + 60), isLoaded = true))
         assertEquals("아직 통화 기록이 없어요", lastCallSentence(null, isLoaded = true))
         assertNull(lastCallSentence(null, isLoaded = false))
+        // 가족이 통화 기록 공유를 껐으면 기록이 없다고 하지 않는다
+        assertEquals("통화 기록을 공유하지 않았어요", lastCallSentence(null, isLoaded = true, callsNotShared = true))
+        assertNull(lastCallSentence(null, isLoaded = false, callsNotShared = true))
     }
 
     @Test
