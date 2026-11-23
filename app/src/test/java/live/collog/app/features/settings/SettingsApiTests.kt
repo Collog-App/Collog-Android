@@ -9,10 +9,13 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import live.collog.app.TestEnvironment
+import live.collog.app.features.settings.models.ManagedFamilyMember
 import live.collog.app.features.settings.models.createFamilyInvitation
 import live.collog.app.features.settings.models.loadCanEnterInvitationCode
 import live.collog.app.features.settings.models.otherMembers
+import live.collog.app.features.settings.models.removeManagedMember
 import live.collog.app.features.settings.models.updateMarketingOptIn
+import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.ApiUser
 import live.collog.app.shared.services.api.CollogJson
 import live.collog.app.shared.services.api.FamilyShare
@@ -95,6 +98,33 @@ class SettingsApiTests {
         fixture.environment.api.removeFamilyMember("family", "m1")
         assertEquals(listOf("/v1/families/family/members/m1"), fixture.paths)
         assertEquals("DELETE", fixture.requests.single().method)
+    }
+
+    @Test
+    fun pendingRowIsCancelledAsInvitationOnlyAndConnectedRowIsRemovedAsBefore() = withFixture { fixture ->
+        fixture.respond = { 204 to "" }
+        val pending = ManagedFamilyMember(id = "m2", userId = null, name = "박정숙", relation = "MOTHER")
+        val connected = ManagedFamilyMember(id = "m1", userId = "mom", name = "김순희", relation = "MOTHER")
+
+        removeManagedMember(fixture.environment, "family", pending)
+        removeManagedMember(fixture.environment, "family", connected)
+
+        assertEquals(listOf("/v1/families/family/members/m2", "/v1/families/family/members/m1"), fixture.paths)
+        assertEquals(listOf("DELETE", "DELETE"), fixture.requests.map { it.method })
+        assertEquals("true", fixture.requests[0].url.queryParameter("pendingOnly"))
+        assertNull(fixture.requests[1].url.queryParameter("pendingOnly"))
+    }
+
+    @Test
+    fun cancellingAnInvitationThatWasJustAcceptedReportsTheServerConflict() = withFixture { fixture ->
+        fixture.respond = { 409 to """{"code":"CONFLICT","message":"이미 수락한 초대예요. 가족 목록을 다시 확인해주세요"}""" }
+        val stale = ManagedFamilyMember(id = "m2", userId = null, name = "박정숙", relation = "MOTHER")
+
+        val error = runCatching { removeManagedMember(fixture.environment, "family", stale) }.exceptionOrNull()
+
+        val server = error as ApiError.Server
+        assertEquals(409, server.status)
+        assertEquals("이미 수락한 초대예요. 가족 목록을 다시 확인해주세요", server.message)
     }
 
     @Test

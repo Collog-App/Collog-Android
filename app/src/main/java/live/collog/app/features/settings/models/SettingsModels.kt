@@ -101,6 +101,14 @@ internal suspend fun loadCanEnterInvitationCode(environment: AppEnvironment): Bo
     return canEnterInvitationCode(isGuest, others)
 }
 
+/**
+ * 구성원 삭제. 아직 수락하지 않은 줄은 「초대 취소」(`pendingOnly`)로 보내, 목록을 연 사이 수락한 사람을 내보내지 않는다.
+ * 그 경우 서버는 아무것도 지우지 않고 409로 답한다(`ApiError.Server`, 안내 문구는 서버 것).
+ */
+internal suspend fun removeManagedMember(environment: AppEnvironment, familyId: String, member: ManagedFamilyMember) {
+    environment.api.removeFamilyMember(familyId, member.id, pendingOnly = !member.isConnected)
+}
+
 internal data class CreatedInvitation(val familyId: String, val invitation: InvitationDto)
 
 /**

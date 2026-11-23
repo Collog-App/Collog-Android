@@ -105,8 +105,15 @@ class CollogApi(val client: CollogApiClient) {
         client.send<FamilyCreated>(ApiEndpoint(path = "/v1/families", method = HttpMethod.POST)).familyId
 
     /** 대기 중 초대는 구성원 누구나, 연결된 구성원은 가족을 만든 사람 또는 본인이 지운다(204). */
-    suspend fun removeFamilyMember(familyId: String, memberId: String) {
-        client.sendRaw(ApiEndpoint(path = "/v1/families/$familyId/members/$memberId", method = HttpMethod.DELETE))
+    /** [pendingOnly]는 「초대 취소」: 그 사이 상대가 수락했으면 서버가 아무것도 지우지 않고 409로 답한다. */
+    suspend fun removeFamilyMember(familyId: String, memberId: String, pendingOnly: Boolean = false) {
+        client.sendRaw(
+            ApiEndpoint(
+                path = "/v1/families/$familyId/members/$memberId",
+                method = HttpMethod.DELETE,
+                query = if (pendingOnly) listOf("pendingOnly" to "true") else emptyList(),
+            ),
+        )
     }
 
     suspend fun dailyQuestions(parentId: String): List<ApiQuestion> =

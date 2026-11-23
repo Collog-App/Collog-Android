@@ -39,6 +39,7 @@ import live.collog.app.features.settings.models.ProfileTarget
 import live.collog.app.features.settings.models.canEnterInvitationCode
 import live.collog.app.features.settings.models.canInviteFamily
 import live.collog.app.features.settings.models.otherMembers
+import live.collog.app.features.settings.models.removeManagedMember
 import live.collog.app.features.settings.views.components.SettingsActionButton
 import live.collog.app.features.settings.views.components.SettingsAlert
 import live.collog.app.features.settings.views.components.SystemTextButton
@@ -53,6 +54,7 @@ import live.collog.app.shared.ui.designsystem.SpecColors
 import live.collog.app.shared.ui.designsystem.specCard
 import live.collog.app.shared.ui.designsystem.specText
 import live.collog.app.shared.navigation.LocalNavigationManager
+import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.FamilyInvitation
 import live.collog.app.shared.services.api.FamilySummary
 import live.collog.app.shared.ui.Haptics
@@ -159,13 +161,18 @@ fun FamilyMembersSettingsScreen(onClose: (() -> Unit)? = null) {
         errorText = null
         scope.launch {
             try {
-                environment.api.removeFamilyMember(familyId, member.id)
+                removeManagedMember(environment, familyId, member)
                 Haptics.commit()
                 load()
                 environment.family.refresh(environment)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                // 초대를 취소하는 사이 상대가 수락했으면(409) 목록을 다시 읽어 연결된 가족을 보인다
+                if (error is ApiError.Server && error.status == 409) {
+                    load()
+                    environment.family.refresh(environment)
+                }
                 errorText = error.message
             } finally {
                 isRemoving = false
