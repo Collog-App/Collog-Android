@@ -198,6 +198,63 @@ class TimelineViewModelTests {
         assertEquals(5, fixture.paths.count { it.endsWith("/extraction") })
     }
 
+    /** [summaries]의 통화는 요약을 담은 제외 통화 추출 결과를, 404 목록은 결과 없음을 답한다. 나머지는 [serve] 그대로. */
+    private fun answerExtractions(fixture: TestEnvironment, summaries: Map<String, String>, missing: Set<String> = emptySet()) {
+        val base = fixture.respond
+        fixture.respond = { request ->
+            val id = request.path().removePrefix("/v1/calls/").removeSuffix("/extraction")
+            when {
+                !request.path().endsWith("/extraction") -> base(request)
+                id in missing -> 404 to """{"code":"NOT_FOUND","message":"추출 결과가 아직 없습니다"}"""
+                id in summaries -> 200 to """{"callId":"$id","parseStatus":"EXCLUDED","facts":[],"summary":"${summaries.getValue(id)}"}"""
+                else -> base(request)
+            }
+        }
+    }
+
+    @Test
+    fun excludedCallWithSummaryBecomesAnEntryWithoutVoiceAnalysis() = withFixture { fixture ->
+        serve(
+            fixture,
+            callList = {
+                calls(call("a"), call("short", "ANALYSIS_EXCLUDED"), call("silent", "ANALYSIS_EXCLUDED"), call("blank", "ANALYSIS_EXCLUDED"))
+            },
+        )
+        answerExtractions(fixture, mapOf("short" to "점심 메뉴 이야기를 나누셨어요.", "blank" to " "), missing = setOf("silent"))
+        val model = TimelineViewModel()
+        model.loadPage(0, fixture.environment)
+
+        val entries = model.page(0).entries
+        // 요약이 없거나(404) 빈 제외 통화는 지금처럼 숨긴다
+        assertEquals(listOf("a", "short"), entries.map { it.callId })
+        assertNull(entries[0].note)
+        val short = entries[1]
+        assertEquals("점심 메뉴 이야기를 나누셨어요.", short.story)
+        assertEquals("말씀이 짧아 목소리 분석은 하지 않았어요.", short.note)
+        assertEquals(listOf("통화 길이"), short.summaryStats.map { it.label })
+        assertTrue(short.counts.isEmpty())
+        assertTrue(short.gauges.isEmpty())
+        assertTrue(short.keywords.isEmpty())
+        // 제외 통화는 음향 지표·대화 기록을 받지 않는다
+        for (id in listOf("short", "silent", "blank")) {
+            assertFalse(fixture.paths.any { it == "/v1/calls/$id/acoustic-features" || it == "/v1/calls/$id/transcript" })
+            assertTrue("/v1/calls/$id/extraction" in fixture.paths)
+        }
+    }
+
+    @Test
+    fun excludedCallsShareTheFiveEntryCap() = withFixture { fixture ->
+        serve(fixture, callList = { calls(*Array(4) { call("c$it") }, *Array(3) { call("e$it", "ANALYSIS_EXCLUDED") }) })
+        answerExtractions(fixture, (0 until 3).associate { "e$it" to "짧은 안부 인사를 나누셨어요." })
+        val model = TimelineViewModel()
+        model.loadPage(0, fixture.environment)
+
+        assertEquals(listOf("c0", "c1", "c2", "c3", "e0"), model.page(0).entries.map { it.callId })
+        assertEquals(7, model.page(0).calls.size)
+        // 다섯 개를 채우면 남은 통화는 받지 않는다
+        assertEquals(5, fixture.paths.count { it.endsWith("/extraction") })
+    }
+
     @Test
     fun noAnalyzedCallsLeavesEntriesEmpty() = withFixture { fixture ->
         serve(fixture, callList = { calls(call("a", "ENDED")) })

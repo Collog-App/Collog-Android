@@ -101,6 +101,18 @@ class CallAnalysisTests {
     }
 
     @Test
+    fun summaryIsShownSeparatelyFromHealthItems() {
+        val item = analysis(
+            extraction = ExtractionDto("call-1", "OK", sleep = "잠을 깊게 못 주무셨어요", summary = "주말 나들이 이야기를 하셨어요."),
+        )
+        assertEquals("주말 나들이 이야기를 하셨어요.", item.summary)
+        // 「건강 대화 항목」에는 요약을 다시 넣지 않는다
+        assertEquals("잠을 깊게 못 주무셨어요", item.conversation)
+        assertEquals(null, analysis(extraction = ExtractionDto("call-1", "OK", summary = " ")).summary)
+        assertEquals(null, analysis(extraction = null).summary)
+    }
+
+    @Test
     fun recommendationAsksTheFirstExtractedTopicsQuestion() {
         assertEquals(
             "다음 통화에서 \"최근 통화에서 나눈 약 이야기에서 더 알려주실 내용이 있어요?\" 하고 물어보세요.",
@@ -249,6 +261,40 @@ class CallAnalysisTests {
         val state = model.state as CallAnalysisState.Unavailable
         assertEquals("분석 대상에서 제외된 통화예요.", state.title)
         assertEquals("응급 안내 문구", state.safetyNotice)
+        assertEquals(null, state.summary)
+    }
+
+    @Test
+    fun excludedCallShowsSummaryWhenServerHasOne() = withFixture { fixture ->
+        serve(
+            fixture,
+            "ANALYSIS_EXCLUDED",
+            extractionBody = """{"callId":"c1","parseStatus":"EXCLUDED","facts":[],"summary":"곧 다시 전화하겠다고 하셨어요."}""",
+        )
+        val model = CallAnalysisViewModel("c1")
+        model.load(fixture.environment)
+
+        val state = model.state as CallAnalysisState.Unavailable
+        assertEquals("곧 다시 전화하겠다고 하셨어요.", state.summary)
+        assertEquals(null, state.safetyNotice)
+        // 요약과 응급 안내는 한 번 받은 추출 결과에서 함께 읽는다
+        assertEquals(1, fixture.paths.count { it.endsWith("/extraction") })
+        assertFalse(fixture.paths.any { it.endsWith("/acoustic-features") })
+    }
+
+    @Test
+    fun analyzedCallCarriesSummary() = withFixture { fixture ->
+        serve(
+            fixture,
+            "ANALYZED",
+            extractionBody = """{"callId":"c1","parseStatus":"OK","sleep":"잘 주무셨어요","facts":[],"summary":"텃밭 이야기를 하셨어요."}""",
+        )
+        val model = CallAnalysisViewModel("c1")
+        model.load(fixture.environment)
+
+        val state = model.state as CallAnalysisState.Ready
+        assertEquals("텃밭 이야기를 하셨어요.", state.analysis.summary)
+        assertEquals("잘 주무셨어요", state.analysis.conversation)
     }
 
     @Test

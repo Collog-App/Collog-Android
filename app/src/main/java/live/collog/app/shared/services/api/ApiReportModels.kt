@@ -73,6 +73,8 @@ data class CallSummaryDto(
 ) {
     val id: String get() = callId
     val isAnalyzed: Boolean get() = state == "ANALYZED"
+    /** 받는 사람이 20초 넘게 말하지 않아 목소리·건강 분석에서 빠진 통화. 요약은 있을 수 있다. */
+    val isAnalysisExcluded: Boolean get() = state == "ANALYSIS_EXCLUDED"
 }
 
 @Serializable
@@ -171,6 +173,8 @@ data class ExtractionDto(
     val facts: List<ExtractionFactDto> = emptyList(),
     /** 통화 중 응급 표현이 있었을 때의 고정 안내 문구. 없거나 서버가 아직 보내지 않으면 null. */
     val safetyNotice: String? = null,
+    /** 통화에서 나눈 이야기 한두 문장. 짧아서 분석에서 빠진 통화(`parseStatus` EXCLUDED)에도 올 수 있다. 없으면 null. */
+    val summary: String? = null,
 )
 
 /** 서버 `ExtractionFact`: 범주별 요약과 근거 구간 번호(타임라인 키워드 줄 위치에 쓴다). */

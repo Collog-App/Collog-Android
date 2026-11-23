@@ -20,6 +20,8 @@ data class CallTimelineEntry(
     val counts: List<CallStat>,
     /** 서버 통화 번호. 누르면 통화 분석 화면을 연다. 체험 모드 견본은 null이라 누를 수 없다. */
     val callId: String? = null,
+    /** 대화 내용 아래 옅은 한 줄(짧아서 목소리 분석을 하지 않은 통화). 없으면 null. */
+    val note: String? = null,
 ) {
     val id: UUID = UUID.randomUUID()
 

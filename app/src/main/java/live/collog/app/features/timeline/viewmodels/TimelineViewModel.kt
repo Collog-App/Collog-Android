@@ -288,16 +288,25 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             from = TimelineWeekPage.isoDate.format(bounds.start),
             to = TimelineWeekPage.isoDate.format(bounds.end),
         )
-        val analyzed = calls.filter { it.isAnalyzed }.take(5)
-        if (analyzed.isEmpty()) return calls to emptyList()
+        // 짧아서 분석에서 빠진 통화도 서버가 요약을 남겼으면 보인다. 최근 것부터 5개까지
+        val candidates = calls.filter { it.isAnalyzed || it.isAnalysisExcluded }
+        if (candidates.isEmpty()) return calls to emptyList()
 
         val result = mutableListOf<CallTimelineEntry>()
-        for (call in analyzed) {
-            val bundle = coroutineScope {
-                val features = async { orNull { api.acousticFeatures(call.callId) } }
-                val extraction = async { orNull { api.extraction(call.callId) } }
-                val transcript = async { orNull { api.transcript(call.callId) } }
-                CallAnalysisBundle(call, features.await(), extraction.await(), transcript.await())
+        for (call in candidates) {
+            if (result.size >= 5) break
+            val bundle = if (call.isAnalyzed) {
+                coroutineScope {
+                    val features = async { orNull { api.acousticFeatures(call.callId) } }
+                    val extraction = async { orNull { api.extraction(call.callId) } }
+                    val transcript = async { orNull { api.transcript(call.callId) } }
+                    CallAnalysisBundle(call, features.await(), extraction.await(), transcript.await())
+                }
+            } else {
+                // 음향 지표·되물음은 없으므로 요약만 받는다. 요약이 없으면(404 포함) 지금처럼 숨긴다
+                val extraction = orNull { api.extraction(call.callId) }
+                if (extraction?.summary.isNullOrBlank()) continue
+                CallAnalysisBundle(call, features = null, extraction = extraction, transcript = null)
             }
             result += CallTimelineEntry.fromBundle(bundle, baselines, usualCallMinutes)
         }

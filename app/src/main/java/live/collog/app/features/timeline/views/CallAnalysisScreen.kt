@@ -82,6 +82,9 @@ fun CallAnalysisScreen(callId: String) {
                         Modifier.padding(horizontal = Spacing.screenHorizontal).padding(top = 27.dp),
                     )
                 }
+                state.summary?.let {
+                    CallSummaryBlock(it, Modifier.padding(horizontal = Spacing.screenHorizontal).padding(top = 27.dp))
+                }
                 EmptyState(
                     symbol = "exclamationmark.circle",
                     title = state.title,
@@ -116,6 +119,7 @@ private fun AnalysisContent(analysis: CallAnalysis, subjectName: String) {
     ) {
         // 응급 안내(11-08 가드레일)는 분석 내용보다 위에
         analysis.safetyNotice?.let { SafetyNoticeCard(it, Modifier.padding(bottom = Spacing.x6)) }
+        analysis.summary?.let { CallSummaryBlock(it, Modifier.padding(bottom = Spacing.x6)) }
         Image(painterResource(R.drawable.ic_family_health), contentDescription = null, modifier = Modifier.size(24.dp))
         Text(
             "방금 나눈 대화에서 건강 관련 정보를 추출 하였습니다.",
@@ -185,6 +189,21 @@ private fun AnalysisContent(analysis: CallAnalysis, subjectName: String) {
             style = CollogType.body01Medium,
             color = CollogColors.gray800,
         )
+    }
+}
+
+/** 맨 위 「통화 요약」(피그마 없음): 「오늘의 권장 사항」 칸과 같은 회색 바탕에 제목과 요약 문장. */
+@Composable
+private fun CallSummaryBlock(summary: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(CollogColors.gray100, BoxShape)
+            .padding(start = Spacing.x5, end = Spacing.x5, top = 15.dp, bottom = Spacing.x5),
+        verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+    ) {
+        Text("통화 요약", style = CollogType.body01Semibold, color = CollogColors.gray1000)
+        Text(summary, style = CollogType.body01Medium, color = CollogColors.gray800)
     }
 }
 

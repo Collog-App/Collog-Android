@@ -22,10 +22,10 @@ import org.junit.Test
 
 /** iOS `CallTimelineEntry+Mapping`. 기대값 중 부동소수점 값은 같은 식을 Swift로 돌려 얻었다. */
 class CallTimelineEntryMappingTests {
-    private fun call(durationSec: Int? = 867) = CallSummaryDto(
+    private fun call(durationSec: Int? = 867, state: String = "ANALYZED") = CallSummaryDto(
         callId = "call-1",
         parentId = "me",
-        state = "ANALYZED",
+        state = state,
         timeSlot = null,
         startedAt = Instant.parse("2026-08-14T03:00:00Z"),
         endedAt = null,
@@ -171,6 +171,47 @@ class CallTimelineEntryMappingTests {
 
         val none = CallTimelineEntry.fromBundle(bundle(extraction = null), emptyMap())
         assertEquals("아직 정리된 대화 항목이 없어요.", none.story)
+        assertNull(none.note)
+    }
+
+    @Test
+    fun summaryComesFirstThenHealthLines() {
+        val summary = "손주 졸업식 이야기를 하셨어요."
+        val withLines = CallTimelineEntry.fromBundle(
+            bundle(extraction = ExtractionDto("call-1", "OK", symptom = "허리가 아프다", sleep = "잘 주무셨다", summary = summary)),
+            emptyMap(),
+        )
+        assertEquals("$summary\n허리가 아프다\n잘 주무셨다", withLines.story)
+
+        // 요약이 있으면 「기록된 건강 이야기가 없었어요」 대신 요약만
+        val summaryOnly = CallTimelineEntry.fromBundle(bundle(extraction = ExtractionDto("call-1", "OK", summary = summary)), emptyMap())
+        assertEquals(summary, summaryOnly.story)
+
+        // 빈 요약은 없는 것과 같다
+        val blank = CallTimelineEntry.fromBundle(bundle(extraction = ExtractionDto("call-1", "OK", summary = "  ")), emptyMap())
+        assertEquals("이번 통화에서는 기록된 건강 이야기가 없었어요.", blank.story)
+    }
+
+    @Test
+    fun excludedCallShowsSummaryWithShortCallNoteAndOnlyCallLength() {
+        val entry = CallTimelineEntry.fromBundle(
+            CallAnalysisBundle(
+                call = call(durationSec = 75, state = "ANALYSIS_EXCLUDED"),
+                features = null,
+                extraction = ExtractionDto("call-1", "EXCLUDED", summary = "곧 다시 전화하겠다고 하셨어요."),
+                transcript = null,
+            ),
+            emptyMap(),
+            usualCallMinutes = 12,
+        )
+        assertEquals("곧 다시 전화하겠다고 하셨어요.", entry.story)
+        assertEquals("말씀이 짧아 목소리 분석은 하지 않았어요.", entry.note)
+        assertEquals(listOf("통화 길이"), entry.summaryStats.map { it.label })
+        assertEquals("2", entry.summaryStats[0].value)
+        assertTrue(entry.keywords.isEmpty())
+        assertTrue(entry.gauges.isEmpty())
+        assertTrue(entry.counts.isEmpty())
+        assertEquals("call-1", entry.callId)
     }
 
     @Test

@@ -70,6 +70,11 @@ fun CallTimelineCard(entry: CallTimelineEntry, modifier: Modifier = Modifier) {
 
         Text(entry.story, style = specText(Pretendard.Regular, 14f).copy(lineHeight = 24.sp))
 
+        entry.note?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = specText(Pretendard.Regular, 12f, SpecColors.muted))
+        }
+
         if (entry.keywords.isNotEmpty()) {
             Spacer(Modifier.height(18.dp))
             KeywordTimeline(entry.keywords)

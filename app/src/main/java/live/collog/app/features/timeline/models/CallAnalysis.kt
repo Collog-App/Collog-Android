@@ -26,6 +26,8 @@ data class CallAnalysis(
     val recommendation: String,
     /** 응급 안내(11-08 가드레일). 서버가 고정 문구로 남겼을 때만. */
     val safetyNotice: String? = null,
+    /** 「통화 요약」: 통화에서 나눈 이야기 한두 문장. 서버가 남겼을 때만. */
+    val summary: String? = null,
 ) {
     /** 분석 대상 이름: 가족 목록에서 찾고, 내가 분석 대상이면 내 닉네임(없으면 계정 이름). 못 찾으면 "가족". */
     fun subjectName(contacts: List<FamilyContact>, me: ApiUser?): String =
@@ -43,8 +45,13 @@ sealed interface CallAnalysisState {
     /** 통화가 끝나지 않았거나 분석 중이다(결과가 아직 없어 404인 때도). */
     data object Pending : CallAnalysisState
 
-    /** 분석에서 빠졌거나(ANALYSIS_EXCLUDED) 분석하지 못한(ANALYSIS_FAILED) 통화. */
-    data class Unavailable(val title: String, val message: String?, val safetyNotice: String? = null) : CallAnalysisState
+    /** 분석에서 빠졌거나(ANALYSIS_EXCLUDED) 분석하지 못한(ANALYSIS_FAILED) 통화. 빠진 통화에도 요약이 있을 수 있다. */
+    data class Unavailable(
+        val title: String,
+        val message: String?,
+        val safetyNotice: String? = null,
+        val summary: String? = null,
+    ) : CallAnalysisState
 
     data class Error(val message: String) : CallAnalysisState
 
@@ -62,13 +69,15 @@ fun CallAnalysis.Companion.fromBundle(
     return CallAnalysis(
         subjectId = bundle.call.parentId,
         dayText = "${HomeViewModel.lastCallDayText(bundle.call.startedAt, now, zone)} 통화",
-        conversation = entry.story,
+        // 요약은 맨 위 「통화 요약」에 따로 보이므로 여기에는 건강 이야기만
+        conversation = healthStory(bundle.extraction),
         // 리포트의 기준선 수집 중 안내(ReportContent)와 같은 문구
         baseline = entry.gauges.joinToString("\n") { "${it.label}: ${it.caption}" }
             .ifEmpty { "아직 평소 범위를 모으는 중이에요. 통화가 쌓이면 변화를 보여드릴게요." },
         acoustic = acoustic(bundle.features),
         recommendation = recommendation(bundle.extraction),
         safetyNotice = bundle.extraction?.safetyNotice?.takeIf { it.isNotBlank() },
+        summary = bundle.extraction?.summary?.takeIf { it.isNotBlank() },
     )
 }
 

@@ -70,6 +70,7 @@ fun CallTimelineEntry.Companion.fromBundle(
         gauges = gauges(features, baselines),
         counts = counts,
         callId = bundle.call.callId,
+        note = if (bundle.call.isAnalysisExcluded) "말씀이 짧아 목소리 분석은 하지 않았어요." else null,
     )
 }
 
@@ -80,11 +81,22 @@ private fun note(baseline: BaselineDto?): StatNote? {
     return StatNote("평소 ${roundHalfAwayFromZero(median)}")
 }
 
+/** 통화 요약이 있으면 맨 위에 두고 건강 이야기 줄을 그 아래에 잇는다. 요약이 없으면 [healthStory] 그대로. */
 private fun story(extraction: ExtractionDto?): String {
+    val summary = extraction?.summary?.takeIf { it.isNotBlank() }
+    if (extraction == null || summary == null) return healthStory(extraction)
+    return (listOf(summary) + healthLines(extraction)).joinToString("\n")
+}
+
+/** 건강 대화 항목(증상·복약·활동·수면). 통화 분석 화면의 「건강 대화 항목」도 이것을 쓴다(요약은 따로 보인다). */
+internal fun healthStory(extraction: ExtractionDto?): String {
     if (extraction == null) return "아직 정리된 대화 항목이 없어요."
-    val lines = listOfNotNull(extraction.symptom, extraction.medication, extraction.activity, extraction.sleep)
+    val lines = healthLines(extraction)
     return if (lines.isEmpty()) "이번 통화에서는 기록된 건강 이야기가 없었어요." else lines.joinToString("\n")
 }
+
+private fun healthLines(extraction: ExtractionDto): List<String> =
+    listOfNotNull(extraction.symptom, extraction.medication, extraction.activity, extraction.sleep)
 
 private val factLabels = mapOf("symptom" to "증상", "medication" to "복약", "activity" to "활동", "sleep" to "수면")
 
