@@ -25,7 +25,10 @@ class FamilyStore {
         private set
     var loadError by mutableStateOf<String?>(null)
         private set
-    /** 지금 가족에 아직 수락하지 않은(만료 전) 초대가 있는지. 홈의 가족 연결 안내가 쓴다. */
+    /** 지금 가족에 아직 수락하지 않은 초대가 있는지(만료 포함). 홈의 가족 연결 안내가 쓴다. */
+    var hasSentInvitation by mutableStateOf(false)
+        private set
+    /** 그중 만료 전이라 아직 수락할 수 있는 초대가 있는지. */
     var hasPendingInvitation by mutableStateOf(false)
         private set
     /** 지금 가족의 구성원 목록을 받아 [contacts]가 맞는지(가족이 없으면 바로 true). 받기 전에는 연결 안내를 띄우지 않는다. */
@@ -76,7 +79,8 @@ class FamilyStore {
             if (environment.session.user?.id != userId || refreshGeneration != generation) return
             contacts = members.map { FamilyContact(it, lastCallText = it.relationTitle) }
             if (contacts.none { it.id == selectedContactId }) selectedContactId = contacts.firstOrNull()?.id
-            hasPendingInvitation = remote.any { it.userId == null && it.invitation?.isExpired == false }
+            hasSentInvitation = remote.any { !it.isCallable }
+            hasPendingInvitation = remote.any { !it.isCallable && it.invitation?.isExpired == false }
             isLoaded = true
             loadError = null
         } catch (error: CancellationException) {
@@ -120,6 +124,7 @@ class FamilyStore {
         generatedQuestions = emptyMap()
         selectedContactId = null
         loadError = null
+        hasSentInvitation = false
         hasPendingInvitation = false
         isLoaded = false
     }

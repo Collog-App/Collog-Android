@@ -2,8 +2,11 @@ package live.collog.app.features.home.models
 
 import live.collog.app.config.AppEnvironment
 
-/** 홈의 가족 연결 안내(피그마 없음). [Invite]는 아직 초대도 없을 때, [Waiting]은 보낸 초대가 수락을 기다릴 때. */
-internal enum class FamilyConnectGuide { Invite, Waiting }
+/**
+ * 홈의 가족 연결 안내(피그마 없음). [Invite]는 아직 보낸 초대가 없을 때, [Waiting]은 보낸 초대가 수락을 기다릴 때,
+ * [Expired]는 보낸 초대가 모두 만료됐을 때.
+ */
+internal enum class FamilyConnectGuide { Invite, Waiting, Expired }
 
 /**
  * 로그인한 사람이 아직 아무와도 연결되지 않았을 때만 안내를 보인다(체험 모드 제외).
@@ -15,6 +18,7 @@ internal fun familyConnectGuide(environment: AppEnvironment): FamilyConnectGuide
         environment.settings.isGuestMode || !environment.session.isAuthenticated -> null
         !family.isLoaded || family.loadError != null || family.contacts.isNotEmpty() -> null
         family.hasPendingInvitation -> FamilyConnectGuide.Waiting
+        family.hasSentInvitation -> FamilyConnectGuide.Expired
         else -> FamilyConnectGuide.Invite
     }
 }

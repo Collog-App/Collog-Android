@@ -53,14 +53,21 @@ class FamilyConnectGuideTests {
     }
 
     @Test
-    fun expiredInvitationIsNotWaiting() = withFixture { fixture ->
+    fun onlyExpiredInvitationsShowTheExpiredGuide() = withFixture { fixture ->
         serveMembers(fixture, invited(status = "EXPIRED"))
         fixture.environment.family.refresh(fixture.environment)
-        assertEquals(FamilyConnectGuide.Invite, familyConnectGuide(fixture.environment))
+        assertEquals(FamilyConnectGuide.Expired, familyConnectGuide(fixture.environment))
 
         serveMembers(fixture, invited(expiresAt = "2020-01-01T00:00:00Z"))
         fixture.environment.family.refresh(fixture.environment)
-        assertEquals(FamilyConnectGuide.Invite, familyConnectGuide(fixture.environment))
+        assertEquals(FamilyConnectGuide.Expired, familyConnectGuide(fixture.environment))
+    }
+
+    @Test
+    fun oneUnexpiredInvitationKeepsWaiting() = withFixture { fixture ->
+        serveMembers(fixture, invited(status = "EXPIRED"), invited().replace("\"m2\"", "\"m3\""))
+        fixture.environment.family.refresh(fixture.environment)
+        assertEquals(FamilyConnectGuide.Waiting, familyConnectGuide(fixture.environment))
     }
 
     @Test

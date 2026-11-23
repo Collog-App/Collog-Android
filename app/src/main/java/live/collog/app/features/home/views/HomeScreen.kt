@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -260,7 +261,7 @@ private fun HomeRoot(viewModel: HomeViewModel) {
                         onPrimary = {
                             when (connectGuide) {
                                 FamilyConnectGuide.Invite -> showsInvitation = true
-                                FamilyConnectGuide.Waiting -> showsFamily = true
+                                FamilyConnectGuide.Waiting, FamilyConnectGuide.Expired -> showsFamily = true
                             }
                         },
                         onEnterCode = { showsInvitationCode = true },
@@ -340,7 +341,7 @@ private fun HomeRoot(viewModel: HomeViewModel) {
         )
     }
     if (showsFamily) {
-        // 대기 중 초대의 코드는 구성원 관리(초대 재발송)에서 다시 본다. 빈 분석 안내의 「가족 초대하기」와 같은 시트
+        // 보낸 초대는 구성원 관리(초대 재발송)에서 코드를 다시 보거나 새로 만든다. 빈 분석 안내의 「가족 초대하기」와 같은 시트
         val dismiss: () -> Unit = {
             showsFamily = false
             scope.launch { refresh() }
@@ -360,15 +361,21 @@ private val GuideSteps = listOf(
 )
 
 /**
- * 가족 연결 안내(피그마 없음). [FamilyConnectGuide.Invite]는 번호 붙은 세 단계, [FamilyConnectGuide.Waiting]은 기다리는 동안 할 일을 적는다.
- * 아래에 초록 버튼(가족 초대하기 / 초대 코드 다시 보기)과 테두리 버튼(초대 코드 입력).
+ * 가족 연결 안내(피그마 없음). [FamilyConnectGuide.Invite]는 번호 붙은 세 단계, 보낸 초대가 있으면 기다림·만료 안내를 적는다.
+ * 아래에 초록 버튼(가족 초대하기 / 보낸 초대 보기)과 테두리 버튼(초대 코드 입력).
  */
 @Composable
 private fun FamilyConnectGuideCard(guide: FamilyConnectGuide, onPrimary: () -> Unit, onEnterCode: () -> Unit) {
-    val bodyStyle = specText(Pretendard.Regular, 13f, SpecColors.sub).copy(lineHeight = 20.sp)
+    // 한국어 낱말이 줄 끝에서 쪼개지지 않게 어절 단위로 줄을 바꾼다(Android 13 이상에서 적용)
+    val bodyStyle = specText(Pretendard.Regular, 13f, SpecColors.sub)
+        .copy(lineHeight = 20.sp, lineBreak = LineBreak.Paragraph.copy(wordBreak = LineBreak.WordBreak.Phrase))
     Column(Modifier.specCard(padding = 0.dp).padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 20.dp)) {
         Text(
-            if (guide == FamilyConnectGuide.Invite) "가족과 연결해 보세요" else "초대 수락을 기다리고 있어요",
+            when (guide) {
+                FamilyConnectGuide.Invite -> "가족과 연결해 보세요"
+                FamilyConnectGuide.Waiting -> "초대 수락을 기다리고 있어요"
+                FamilyConnectGuide.Expired -> "보낸 초대가 만료됐어요"
+            },
             style = specText(Pretendard.Bold, 16f),
         )
         Spacer(Modifier.height(14.dp))
@@ -385,6 +392,10 @@ private fun FamilyConnectGuideCard(guide: FamilyConnectGuide, onPrimary: () -> U
                 "가족이 콜록 앱 설정의 「초대 코드 입력」에 받은 코드를 넣으면 연결돼요.",
                 style = bodyStyle,
             )
+            FamilyConnectGuide.Expired -> Text(
+                "「보낸 초대 보기」에서 새 초대 코드를 만들어 다시 보내주세요.",
+                style = bodyStyle,
+            )
         }
         Spacer(Modifier.height(20.dp))
         Box(
@@ -396,7 +407,7 @@ private fun FamilyConnectGuideCard(guide: FamilyConnectGuide, onPrimary: () -> U
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                if (guide == FamilyConnectGuide.Invite) "가족 초대하기" else "초대 코드 다시 보기",
+                if (guide == FamilyConnectGuide.Invite) "가족 초대하기" else "보낸 초대 보기",
                 style = specText(Pretendard.Bold, 15f, Color.White),
             )
         }
