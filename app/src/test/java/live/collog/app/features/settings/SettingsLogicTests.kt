@@ -10,6 +10,7 @@ import live.collog.app.features.settings.models.HealthSelection
 import live.collog.app.features.settings.models.InvitationRelations
 import live.collog.app.features.settings.models.ManagedFamilyMember
 import live.collog.app.features.settings.models.ageText
+import live.collog.app.features.settings.models.canCreateInvitation
 import live.collog.app.features.settings.models.canEnterInvitationCode
 import live.collog.app.features.settings.models.canInviteFamily
 import live.collog.app.features.settings.models.canSaveHealthProfile
@@ -127,6 +128,15 @@ class SettingsLogicTests {
         assertTrue(canInviteFamily(isGuestMode = false, hasFamily = false, serverAllowsInvitations = false))
         assertFalse(canInviteFamily(isGuestMode = false, hasFamily = true, serverAllowsInvitations = false))
         assertFalse(canInviteFamily(isGuestMode = true, hasFamily = false, serverAllowsInvitations = true))
+    }
+
+    @Test
+    fun invitationNeedsANameAndAChosenRelation() {
+        assertTrue(canCreateInvitation("김순희", "MOTHER", isSubmitting = false))
+        // 관계는 미리 고르지 않으므로 고르기 전에는 만들 수 없다
+        assertFalse(canCreateInvitation("김순희", null, isSubmitting = false))
+        assertFalse(canCreateInvitation("", "FATHER", isSubmitting = false))
+        assertFalse(canCreateInvitation("김순희", "MOTHER", isSubmitting = true))
     }
 
     @Test

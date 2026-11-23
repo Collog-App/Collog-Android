@@ -19,6 +19,10 @@ import live.collog.app.shared.models.familyRelationTitle
 /** 초대할 때 고르는 관계(서버 `InvitationCreate.relation`). */
 internal val InvitationRelations = listOf("MOTHER", "FATHER", "SPOUSE", "CHILD", "SIBLING", "GRANDPARENT", "OTHER")
 
+/** 초대 만들기: 이름과 관계를 모두 정해야 한다. 관계를 미리 골라 두면 바꾸지 않은 사람이 모두 어머니가 되어 비워 둔다. */
+internal fun canCreateInvitation(name: String, relation: String?, isSubmitting: Boolean): Boolean =
+    name.isNotEmpty() && relation != null && !isSubmitting
+
 /** 관계 이름. 가족을 만든 사람처럼 관계가 비어 있으면 null. */
 internal fun relationTitle(relation: String?): String? = familyRelationTitle(relation)
 

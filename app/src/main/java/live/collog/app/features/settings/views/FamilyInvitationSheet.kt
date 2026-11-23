@@ -35,6 +35,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import live.collog.app.config.LocalAppEnvironment
 import live.collog.app.features.settings.models.InvitationRelations
+import live.collog.app.features.settings.models.canCreateInvitation
 import live.collog.app.features.settings.models.createFamilyInvitation
 import live.collog.app.features.settings.models.relationTitle
 import live.collog.app.shared.ui.Haptics
@@ -58,14 +59,14 @@ fun FamilyInvitationSheet(onDismiss: () -> Unit, onCreated: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     var name by remember { mutableStateOf("") }
-    var relation by remember { mutableStateOf("MOTHER") }
+    var relation by remember { mutableStateOf<String?>(null) }
     var invitationCode by remember { mutableStateOf<String?>(null) }
     var shareTextValue by remember { mutableStateOf<String?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var createdFamilyId by remember { mutableStateOf<String?>(null) }
 
-    val canCreate = name.isNotEmpty() && !isSubmitting
+    val canCreate = canCreateInvitation(name, relation, isSubmitting)
 
     // 새로 만든 가족은 시트를 닫을 때 세션에 넣는다. 넣는 순간 앱이 홈으로 돌아가 코드를 보여 줄 수 없다.
     // 홈에서 띄운 구성원 시트는 그대로 남으므로, 넣은 뒤 대기 중 초대가 보이게 다시 불러온다.
@@ -79,13 +80,14 @@ fun FamilyInvitationSheet(onDismiss: () -> Unit, onCreated: () -> Unit) {
     }
 
     fun createInvitation() {
+        val chosenRelation = relation ?: return
         isSubmitting = true
         errorText = null
         scope.launch {
             try {
                 if (environment.settings.isGuestMode) return@launch
                 val hadFamily = environment.session.familyId != null
-                val created = createFamilyInvitation(environment, name, relation)
+                val created = createFamilyInvitation(environment, name, chosenRelation)
                 invitationCode = created.invitation.code
                 shareTextValue = created.invitation.shareText
                 if (hadFamily) onCreated() else createdFamilyId = created.familyId
@@ -166,6 +168,11 @@ fun FamilyInvitationSheet(onDismiss: () -> Unit, onCreated: () -> Unit) {
                             }
                         },
                     )
+
+                    // 관계는 미리 고르지 않는다. 고르기 전에는 안내 글자를 보이고 「초대 만들기」를 막는다
+                    if (relation == null) {
+                        Text("관계를 선택해주세요", style = CollogType.body03Medium, color = CollogColors.gray700)
+                    }
 
                     // 관계 일곱 가지는 한 줄 분할 선택에 들어가지 않아 줄바꿈되는 알약 버튼으로 고른다
                     FlowRow(
