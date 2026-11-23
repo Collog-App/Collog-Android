@@ -281,6 +281,44 @@ class TimelineViewModelTests {
     }
 
     @Test
+    fun sharingTurnedOffIsAnEmptyStateNotAFailure() = withFixture { fixture ->
+        serve(fixture)
+        val base = fixture.respond
+        val forbidden = 403 to """{"code":"FORBIDDEN","message":"열람 권한이 없는 항목입니다"}"""
+        fixture.respond = { request ->
+            val path = request.path()
+            if (path.endsWith("/reports") || path.endsWith("/calls")) forbidden else base(request)
+        }
+        val model = TimelineViewModel()
+        model.loadPage(0, fixture.environment)
+
+        val page = model.page(0)
+        assertTrue(page.isLoaded)
+        assertTrue(page.reportNotShared)
+        assertTrue(page.timelineNotShared)
+        assertNull(page.reportError)
+        assertNull(page.timelineError)
+        assertTrue(page.entries.isEmpty())
+    }
+
+    @Test
+    fun otherServerErrorsStayLoadFailures() = withFixture { fixture ->
+        serve(fixture, reportStatus = 503)
+        val base = fixture.respond
+        fixture.respond = { request ->
+            if (request.path().endsWith("/calls")) 500 to """{"code":"SERVER","message":"잠시 뒤 다시 시도해주세요"}""" else base(request)
+        }
+        val model = TimelineViewModel()
+        model.loadPage(0, fixture.environment)
+
+        val page = model.page(0)
+        assertNotNull(page.reportError)
+        assertEquals("잠시 뒤 다시 시도해주세요", page.timelineError)
+        assertFalse(page.reportNotShared)
+        assertFalse(page.timelineNotShared)
+    }
+
+    @Test
     fun loadedPageIsNotFetchedAgainUnlessForced() = withFixture { fixture ->
         serve(fixture)
         val model = TimelineViewModel()

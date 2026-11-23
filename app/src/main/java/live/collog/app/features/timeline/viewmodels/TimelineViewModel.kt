@@ -19,6 +19,7 @@ import live.collog.app.features.timeline.models.TimelineWeekPage
 import live.collog.app.features.timeline.models.WeekBounds
 import live.collog.app.features.timeline.models.WeeklySpeechHistory
 import live.collog.app.features.timeline.models.fromBundle
+import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.BaselineDto
 import live.collog.app.shared.services.api.CallSummaryDto
 import live.collog.app.shared.services.api.CollogApi
@@ -232,7 +233,13 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         try {
             val bounds = TimelineWeekPage.bounds(offset)
             var page = pages[offset] ?: TimelineWeekPage(offset)
-            page = page.copy(reportError = null, timelineError = null, isLoaded = false)
+            page = page.copy(
+                reportError = null,
+                timelineError = null,
+                reportNotShared = false,
+                timelineNotShared = false,
+                isLoaded = false,
+            )
             pages = pages + (offset to page)
 
             try {
@@ -245,7 +252,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                page = page.copy(reportError = e.message)
+                page = if (e.isNotShared) page.copy(reportNotShared = true) else page.copy(reportError = e.message)
             }
 
             try {
@@ -266,7 +273,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                page = page.copy(timelineError = e.message)
+                page = if (e.isNotShared) page.copy(timelineNotShared = true) else page.copy(timelineError = e.message)
             }
             if (selectedTabIndex == 0) page = page.copy(lifeRecord = lifeRecord(api, parentId, bounds))
             if (generation != contentGeneration) return
@@ -339,6 +346,9 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         if (recent.size < 3) return null
         return (recent.sumOf { it.durationSec ?: 0 } / recent.size + 59) / 60
     }
+
+    /** 가족이 「가족 공유 데이터 범위」에서 그 항목 공유를 끄면 대상(`/parents/{id}/...`) 요청이 403 이다. */
+    private val Exception.isNotShared: Boolean get() = this is ApiError.Server && status == 403
 
     /** Swift `try?`: 실패하면 null. 취소는 삼키지 않는다. */
     private suspend fun <T> orNull(block: suspend () -> T): T? = try {

@@ -25,6 +25,9 @@ data class TimelineWeekPage(
     val isLoaded: Boolean = false,
     val reportError: String? = null,
     val timelineError: String? = null,
+    /** 가족이 리포트·타임라인 공유를 꺼 둬 서버가 막았다(403). 오류가 아니라 빈 상태로 보인다. */
+    val reportNotShared: Boolean = false,
+    val timelineNotShared: Boolean = false,
     /** 리포트 「생활 기록」. 못 받았거나(서버 미지원·공유 막힘) 타임라인 탭이면 null 이라 숨긴다. */
     val lifeRecord: LifeRecord? = null,
 ) {
