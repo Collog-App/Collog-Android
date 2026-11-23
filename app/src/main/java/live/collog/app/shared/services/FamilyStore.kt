@@ -25,6 +25,12 @@ class FamilyStore {
         private set
     var loadError by mutableStateOf<String?>(null)
         private set
+    /** 지금 가족에 아직 수락하지 않은(만료 전) 초대가 있는지. 홈의 가족 연결 안내가 쓴다. */
+    var hasPendingInvitation by mutableStateOf(false)
+        private set
+    /** 지금 가족의 구성원 목록을 받아 [contacts]가 맞는지(가족이 없으면 바로 true). 받기 전에는 연결 안내를 띄우지 않는다. */
+    var isLoaded by mutableStateOf(false)
+        private set
 
     private var refreshGeneration = UUID.randomUUID()
 
@@ -59,15 +65,19 @@ class FamilyStore {
         }
         val familyId = environment.session.familyId ?: run {
             reset()
+            isLoaded = true
             return
         }
         val userId = environment.session.user?.id
         try {
+            val remote = environment.api.members(familyId)
             // 역할 구분 없이 나를 뺀 연결된 가족 모두가 연락처다
-            val members = environment.api.members(familyId).filter { it.isCallable && it.userId != userId }
+            val members = remote.filter { it.isCallable && it.userId != userId }
             if (environment.session.user?.id != userId || refreshGeneration != generation) return
             contacts = members.map { FamilyContact(it, lastCallText = it.relationTitle) }
             if (contacts.none { it.id == selectedContactId }) selectedContactId = contacts.firstOrNull()?.id
+            hasPendingInvitation = remote.any { it.userId == null && it.invitation?.isExpired == false }
+            isLoaded = true
             loadError = null
         } catch (error: CancellationException) {
             throw error
@@ -110,6 +120,8 @@ class FamilyStore {
         generatedQuestions = emptyMap()
         selectedContactId = null
         loadError = null
+        hasPendingInvitation = false
+        isLoaded = false
     }
 }
 

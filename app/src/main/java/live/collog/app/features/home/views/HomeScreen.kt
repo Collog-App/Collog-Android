@@ -29,11 +29,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +60,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import java.time.Instant
@@ -64,13 +68,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import live.collog.app.R
 import live.collog.app.config.LocalAppEnvironment
+import live.collog.app.features.auth.views.InvitationAcceptSheet
 import live.collog.app.features.call.services.LocalCallCenter
 import live.collog.app.features.health.services.LocalHealthLink
 import live.collog.app.features.health.views.HealthLinkHintCard
+import live.collog.app.features.home.models.FamilyConnectGuide
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.home.models.FamilyHealthSummary
+import live.collog.app.features.home.models.familyConnectGuide
 import live.collog.app.features.home.viewmodels.HomeViewModel
 import live.collog.app.features.home.viewmodels.TodoViewModel
+import live.collog.app.features.settings.views.FamilyInvitationSheet
 import live.collog.app.features.settings.views.FamilyMembersSettingsScreen
 import live.collog.app.features.timeline.models.WeeklySpeechHistory
 import live.collog.app.shared.components.chart.TrendSeries
@@ -131,6 +139,7 @@ fun HomeScreen() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeRoot(viewModel: HomeViewModel) {
     val environment = LocalAppEnvironment.current
@@ -150,6 +159,10 @@ private fun HomeRoot(viewModel: HomeViewModel) {
     val questions = environment.family.questions(selectedContact).map { it.text }.take(2)
     val summary = viewModel.healthSummary
     val isGuest = environment.settings.isGuestMode
+    val connectGuide = familyConnectGuide(environment)
+    var showsInvitation by remember { mutableStateOf(false) }
+    var showsInvitationCode by remember { mutableStateOf(false) }
+    var showsFamily by remember { mutableStateOf(false) }
 
     suspend fun refresh() {
         environment.family.refresh(environment)
@@ -240,7 +253,19 @@ private fun HomeRoot(viewModel: HomeViewModel) {
                 }
 
                 val error = viewModel.loadError ?: viewModel.recentCallsError ?: environment.family.loadError
-                if (summary != null) {
+                if (connectGuide != null) {
+                    // 아직 아무와도 연결되지 않았으면 빈 분석 안내 대신 연결하는 방법을 보인다
+                    FamilyConnectGuideCard(
+                        connectGuide,
+                        onPrimary = {
+                            when (connectGuide) {
+                                FamilyConnectGuide.Invite -> showsInvitation = true
+                                FamilyConnectGuide.Waiting -> showsFamily = true
+                            }
+                        },
+                        onEnterCode = { showsInvitationCode = true },
+                    )
+                } else if (summary != null) {
                     SpeechRateCard(summary, weekly ?: summary.trend) { navigation.push(Route.FamilyHealthOverview) }
                 } else if (!viewModel.isLoaded) {
                     Column(
@@ -298,6 +323,92 @@ private fun HomeRoot(viewModel: HomeViewModel) {
                     HealthLinkHintCard(onConnect = { healthLink.present() }, onClose = { healthLink.dismissHint(environment) })
                 }
             }
+        }
+    }
+
+    // 가족 연결 안내의 버튼이 여는 시트: 설정·구성원 관리와 같은 시트를 그대로 쓰고, 닫히거나 끝나면 가족을 다시 읽는다
+    if (showsInvitation) {
+        FamilyInvitationSheet(
+            onDismiss = { showsInvitation = false },
+            onCreated = { scope.launch { refresh() } },
+        )
+    }
+    if (showsInvitationCode) {
+        InvitationAcceptSheet(
+            onDismiss = { showsInvitationCode = false },
+            onAccepted = { scope.launch { refresh() } },
+        )
+    }
+    if (showsFamily) {
+        // 대기 중 초대의 코드는 구성원 관리(초대 재발송)에서 다시 본다. 빈 분석 안내의 「가족 초대하기」와 같은 시트
+        val dismiss: () -> Unit = {
+            showsFamily = false
+            scope.launch { refresh() }
+        }
+        ModalBottomSheet(
+            onDismissRequest = dismiss,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = CollogColors.gray50,
+        ) { FamilyMembersSettingsScreen(onClose = dismiss) }
+    }
+}
+
+private val GuideSteps = listOf(
+    "「가족 초대하기」를 눌러 초대 코드를 만들어요.",
+    "코드를 가족에게 보내요. 가족은 콜록 앱 설정의 「초대 코드 입력」에 코드를 넣어요.",
+    "연결되면 여기서 바로 전화할 수 있어요.",
+)
+
+/**
+ * 가족 연결 안내(피그마 없음). [FamilyConnectGuide.Invite]는 번호 붙은 세 단계, [FamilyConnectGuide.Waiting]은 기다리는 동안 할 일을 적는다.
+ * 아래에 초록 버튼(가족 초대하기 / 초대 코드 다시 보기)과 테두리 버튼(초대 코드 입력).
+ */
+@Composable
+private fun FamilyConnectGuideCard(guide: FamilyConnectGuide, onPrimary: () -> Unit, onEnterCode: () -> Unit) {
+    val bodyStyle = specText(Pretendard.Regular, 13f, SpecColors.sub).copy(lineHeight = 20.sp)
+    Column(Modifier.specCard(padding = 0.dp).padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 20.dp)) {
+        Text(
+            if (guide == FamilyConnectGuide.Invite) "가족과 연결해 보세요" else "초대 수락을 기다리고 있어요",
+            style = specText(Pretendard.Bold, 16f),
+        )
+        Spacer(Modifier.height(14.dp))
+        when (guide) {
+            FamilyConnectGuide.Invite -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GuideSteps.forEachIndexed { index, step ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("${index + 1}.", style = specText(Pretendard.Bold, 13f, SpecColors.green).copy(lineHeight = 20.sp))
+                        Text(step, Modifier.weight(1f), style = bodyStyle)
+                    }
+                }
+            }
+            FamilyConnectGuide.Waiting -> Text(
+                "가족이 콜록 앱 설정의 「초대 코드 입력」에 받은 코드를 넣으면 연결돼요.",
+                style = bodyStyle,
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .background(SpecColors.green, RoundedCornerShape(12.dp))
+                .pressable(onClick = onPrimary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (guide == FamilyConnectGuide.Invite) "가족 초대하기" else "초대 코드 다시 보기",
+                style = specText(Pretendard.Bold, 15f, Color.White),
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Box(
+            Modifier
+                .specCard(padding = 0.dp, shadowed = false, radius = 12.dp, borderColor = SpecColors.greenOutline)
+                .height(48.dp)
+                .pressable(onClick = onEnterCode),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("초대 코드 입력", style = specText(Pretendard.Bold, 15f, SpecColors.green))
         }
     }
 }
