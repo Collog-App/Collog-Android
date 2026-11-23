@@ -63,6 +63,8 @@ data class InvitationDto(
 data class CallSummaryDto(
     val callId: String,
     val parentId: String,
+    /** 통화의 다른 쪽 사람. 서버가 아직 보내지 않으면 null. */
+    val childId: String? = null,
     val state: String,
     val timeSlot: String? = null,
     @Serializable(with = CollogInstantSerializer::class) val startedAt: Instant,

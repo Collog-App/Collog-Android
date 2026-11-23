@@ -152,6 +152,8 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         val baselines: Map<String, BaselineDto>,
         val history: WeeklySpeechHistory,
         val usualCallMinutes: Int?,
+        /** 로그인한 나. 분석에서 빠진 통화는 내가 낀 통화만 추출 결과를 읽을 수 있다. */
+        val userId: String?,
     )
 
     private suspend fun loadContext(environment: AppEnvironment): Context? {
@@ -175,7 +177,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             usual
         }
 
-        return Context(parentId, api, baselines, history, usualMinutes)
+        return Context(parentId, api, baselines, history, usualMinutes, environment.session.user?.id)
     }
 
     private fun resolveSelection(environment: AppEnvironment) {
@@ -256,7 +258,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             }
 
             try {
-                val content = entries(parentId, api, baselines, bounds, context.usualCallMinutes)
+                val content = entries(parentId, api, baselines, bounds, context.usualCallMinutes, context.userId)
                 val previous = TimelineWeekPage.bounds(offset - 1)
                 val previousCalls = orNull {
                     api.calls(
@@ -289,14 +291,18 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         baselines: Map<String, BaselineDto>,
         bounds: WeekBounds,
         usualCallMinutes: Int?,
+        userId: String?,
     ): Pair<List<CallSummaryDto>, List<CallTimelineEntry>> {
         val calls = api.calls(
             parentId,
             from = TimelineWeekPage.isoDate.format(bounds.start),
             to = TimelineWeekPage.isoDate.format(bounds.end),
         )
-        // 짧아서 분석에서 빠진 통화도 서버가 요약을 남겼으면 보인다. 최근 것부터 5개까지
-        val candidates = calls.filter { it.isAnalyzed || it.isAnalysisExcluded }
+        // 짧아서 분석에서 빠진 통화도 서버가 요약을 남겼으면 보인다. 최근 것부터 5개까지.
+        // 빠진 통화의 추출 결과는 통화한 두 사람만 읽을 수 있어(다른 사람은 403) 내가 낀 통화만 묻는다
+        val candidates = calls.filter {
+            it.isAnalyzed || (it.isAnalysisExcluded && userId != null && userId in listOf(it.parentId, it.childId))
+        }
         if (candidates.isEmpty()) return calls to emptyList()
 
         val result = mutableListOf<CallTimelineEntry>()

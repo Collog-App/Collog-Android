@@ -51,8 +51,8 @@ class TimelineViewModelTests {
         "acousticTrends":[],"analyzedCallCount":$analyzedCallCount}
         """.trimIndent()
 
-    private fun call(id: String, state: String = "ANALYZED") =
-        """{"callId":"$id","parentId":"me","state":"$state","startedAt":"2026-10-20T03:00:00Z","durationSec":600,"recorded":true}"""
+    private fun call(id: String, state: String = "ANALYZED", parentId: String = "me", childId: String? = null) =
+        """{"callId":"$id","parentId":"$parentId",${childId?.let { "\"childId\":\"$it\"," } ?: ""}"state":"$state","startedAt":"2026-10-20T03:00:00Z","durationSec":600,"recorded":true}"""
 
     private fun calls(vararg items: String) = """{"calls":[${items.joinToString(",")}]}"""
 
@@ -240,6 +240,27 @@ class TimelineViewModelTests {
             assertFalse(fixture.paths.any { it == "/v1/calls/$id/acoustic-features" || it == "/v1/calls/$id/transcript" })
             assertTrue("/v1/calls/$id/extraction" in fixture.paths)
         }
+    }
+
+    @Test
+    fun excludedCallsAreLookedUpOnlyWhenIWasOnTheCall() = withFixture { fixture ->
+        serve(
+            fixture,
+            callList = {
+                calls(
+                    call("withMe", "ANALYSIS_EXCLUDED", parentId = "mom", childId = "me"),
+                    call("others", "ANALYSIS_EXCLUDED", parentId = "mom", childId = "dad"),
+                    call("unknown", "ANALYSIS_EXCLUDED", parentId = "mom"),
+                )
+            },
+        )
+        answerExtractions(fixture, listOf("withMe", "others", "unknown").associateWith { "안부 인사를 나누셨어요." })
+        val model = TimelineViewModel()
+        model.loadPage(0, fixture.environment)
+
+        assertEquals(listOf("withMe"), model.page(0).entries.map { it.callId })
+        // 다른 사람끼리의 통화는 403 이라 묻지 않는다
+        assertEquals(listOf("/v1/calls/withMe/extraction"), fixture.paths.filter { it.endsWith("/extraction") })
     }
 
     @Test
