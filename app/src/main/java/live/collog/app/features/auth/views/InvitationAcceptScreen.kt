@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import live.collog.app.config.AppEnvironment
 import live.collog.app.config.LocalAppEnvironment
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogType
@@ -38,7 +40,17 @@ import live.collog.app.shared.ui.designsystem.Spacing
 import live.collog.app.shared.ui.designsystem.pretendardPlain
 import live.collog.app.shared.ui.pressable
 
-/** iOS `InvitationAcceptView`. 설정의 초대 코드 입력 시트([InvitationAcceptSheet]) 안에서 쓴다. */
+/**
+ * 받은 코드로 들어가면 서버가 혼자뿐인 내 가족을 정리해, 내가 보낸 초대(수락 전, 만료 포함)도 함께 사라진다.
+ * 그런 초대가 있는지 본다. 가족이 없거나 체험 모드면 서버를 부르지 않는다.
+ */
+internal suspend fun hasUnacceptedSentInvitation(environment: AppEnvironment): Boolean {
+    if (environment.settings.isGuestMode) return false
+    val familyId = environment.session.familyId ?: return false
+    return environment.api.members(familyId).any { !it.isCallable }
+}
+
+/** iOS `InvitationAcceptView`. 초대 코드 입력 시트([InvitationAcceptSheet]) 안에서 쓴다(설정·구성원 관리·홈 모두 이 시트). */
 @Composable
 fun InvitationAcceptScreen(onCompleted: () -> Unit) {
     val environment = LocalAppEnvironment.current
@@ -46,8 +58,20 @@ fun InvitationAcceptScreen(onCompleted: () -> Unit) {
     var code by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    // 못 알아내면 안내 없이 둔다
+    var cancelsSentInvitation by remember { mutableStateOf(false) }
 
     val canSubmit = code.length == 6 && code.all { it.isDigit() } && !isSubmitting
+
+    LaunchedEffect(Unit) {
+        cancelsSentInvitation = try {
+            hasUnacceptedSentInvitation(environment)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            false
+        }
+    }
 
     fun accept() {
         isSubmitting = true
@@ -83,6 +107,9 @@ fun InvitationAcceptScreen(onCompleted: () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.x2)) {
             Text("가족 초대 코드를 입력해주세요", style = CollogType.headline02, color = CollogColors.gray900)
             Text("가족에게 받은 코드로 가족에 참여할 수 있어요", style = CollogType.body02Medium, color = CollogColors.gray800)
+            if (cancelsSentInvitation) {
+                Text("초대 코드를 입력하면 내가 보낸 초대는 취소돼요.", style = CollogType.body03Medium, color = CollogColors.orange600)
+            }
         }
 
         BasicTextField(
