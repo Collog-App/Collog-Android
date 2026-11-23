@@ -17,12 +17,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import live.collog.app.features.auth.views.InvitationAcceptSheet
 import live.collog.app.features.call.services.LocalCallCenter
 import live.collog.app.features.health.services.LocalHealthLink
 import live.collog.app.features.settings.models.GuestSamples
+import live.collog.app.features.settings.models.loadCanEnterInvitationCode
 import live.collog.app.shared.components.navbar.CollapsingHeaderScrollView
 import live.collog.app.shared.components.spec.SpecToggle
 import live.collog.app.shared.ui.designsystem.CollogIcon
@@ -68,7 +76,7 @@ fun SettingsScreen() {
 /**
  * 새 피그마 15 「설정 · 메인」: 계정(4줄, 로그인하면 피그마에 없는 「건강 앱 연결」 한 줄 더) / 알림(통화·리포트 토글) / 통화(질문 음성 안내 토글) / 로그아웃.
  * 명세에 없는 계정 세부(이메일·전화번호·마케팅·개인정보처리방침·동의 철회·계정 삭제)는 「계정 정보」 줄 안쪽에 그대로 둔다.
- * 초대 코드 입력은 「가족 구성원 관리」 안에 있다.
+ * 받은 초대 코드 입력은 아직 아무와도 연결되지 않았을 때 맨 위에 크게 보인다(「가족 구성원 관리」 안의 글자 링크도 그대로).
  */
 @Composable
 private fun SettingsRoot() {
@@ -82,6 +90,21 @@ private fun SettingsRoot() {
     val isGuest = settings.isGuestMode
     val user = if (isGuest) GuestSamples.user else environment.session.user
     val userName = user?.let { it.nickname ?: it.name }.orEmpty()
+    // 구성원 목록을 받기 전이나 못 받았으면 숨긴다(이미 연결된 사람에게 잠깐 보이지 않게)
+    var showsCodeEntry by remember { mutableStateOf(false) }
+    var showsInvitationCode by remember { mutableStateOf(false) }
+
+    suspend fun loadCodeEntry() {
+        showsCodeEntry = try {
+            loadCanEnterInvitationCode(environment)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            false
+        }
+    }
+
+    LaunchedEffect(isGuest, environment.session.familyId) { loadCodeEntry() }
 
     CollapsingHeaderScrollView(
         title = "설정",
@@ -92,6 +115,10 @@ private fun SettingsRoot() {
             Modifier.fillMaxWidth().padding(horizontal = 19.dp).padding(bottom = Spacing.x8),
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
+            if (showsCodeEntry) {
+                InvitationCodeEntryCard { showsInvitationCode = true }
+            }
+
             SettingsGroup("계정") {
                 SpecNavigationRow("계정 정보", value = userName) { navigator.push(SettingsRoute.Account) }
                 SpecDivider()
@@ -161,6 +188,32 @@ private fun SettingsRoot() {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+
+    if (showsInvitationCode) {
+        InvitationAcceptSheet(
+            onDismiss = { showsInvitationCode = false },
+            onAccepted = { scope.launch { loadCodeEntry() } },
+        )
+    }
+}
+
+/** 맨 위 「초대 코드 입력」 카드: 초록 테두리(구성원 관리의 「가족 초대하기」와 같은 색), 제목 15/700 + 설명 12/400 + 꺾쇠. */
+@Composable
+private fun InvitationCodeEntryCard(onClick: () -> Unit) {
+    Row(
+        Modifier
+            .specCard(padding = 0.dp, radius = 16.dp, borderColor = SpecColors.greenOutline)
+            .pressable(onClick = onClick)
+            .padding(start = 17.dp, end = 14.dp, top = 16.dp, bottom = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("초대 코드 입력", style = specText(Pretendard.Bold, 15f, SpecColors.green))
+            Text("가족에게 받은 6자리 코드를 넣으면 바로 연결돼요", style = specText(Pretendard.Regular, 12f, SpecColors.sub))
+        }
+        Spacer(Modifier.width(8.dp))
+        CollogIcon("chevron.right", size = 18.dp, color = SpecColors.chevron)
     }
 }
 

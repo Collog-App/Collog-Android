@@ -82,6 +82,21 @@ internal fun canInviteFamily(isGuestMode: Boolean, hasFamily: Boolean, serverAll
 internal fun canEnterInvitationCode(isGuestMode: Boolean, others: List<ManagedFamilyMember>): Boolean =
     !isGuestMode && others.none { it.isConnected }
 
+/**
+ * 설정 첫 화면 맨 위 「초대 코드 입력」을 보일지. 구성원 관리와 같은 목록(나를 뺀 가족)으로 [canEnterInvitationCode]를 따른다.
+ * 가족이 없으면 혼자이므로 목록을 받지 않고, 체험 모드는 서버를 부르지 않는다.
+ */
+internal suspend fun loadCanEnterInvitationCode(environment: AppEnvironment): Boolean {
+    val isGuest = environment.settings.isGuestMode
+    val familyId = environment.session.familyId
+    val others = if (isGuest || familyId == null) {
+        emptyList()
+    } else {
+        otherMembers(environment.api.familyMembers(familyId).members, environment.session.user?.id)
+    }
+    return canEnterInvitationCode(isGuest, others)
+}
+
 internal data class CreatedInvitation(val familyId: String, val invitation: InvitationDto)
 
 /**

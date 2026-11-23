@@ -10,6 +10,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import live.collog.app.TestEnvironment
 import live.collog.app.features.settings.models.createFamilyInvitation
+import live.collog.app.features.settings.models.loadCanEnterInvitationCode
 import live.collog.app.features.settings.models.otherMembers
 import live.collog.app.features.settings.models.updateMarketingOptIn
 import live.collog.app.shared.services.api.ApiUser
@@ -155,6 +156,39 @@ class SettingsApiTests {
         assertEquals("김순희 (배우자)", mom.title)
         assertEquals("1960-03-15", mom.profileTarget?.birthDate)
         assertEquals("482913", others[1].invitation?.code)
+    }
+
+    private fun membersJson(vararg others: String) =
+        """{"members":[{"memberId":"me","userId":"me","name":"Tester","relation":"","status":"ACTIVE","isCreator":true}${
+            others.joinToString("") { ",$it" }
+        }]}"""
+
+    private val pendingMemberJson =
+        """{"memberId":"m2","userId":null,"name":"박정숙","relation":"MOTHER","status":"INVITED",
+           "invitation":{"invitationId":"inv","code":"482913","shareText":"공유","expiresAt":"2099-01-01T00:00:00Z","status":"PENDING"}}"""
+
+    @Test
+    fun settingsCodeEntryShowsWhileNobodyIsConnected() = withFixture { fixture ->
+        // 나 혼자이거나 보낸 초대만 기다리는 중이면 보인다
+        fixture.respond = { 200 to membersJson() }
+        assertTrue(loadCanEnterInvitationCode(fixture.environment))
+        fixture.respond = { 200 to membersJson(pendingMemberJson) }
+        assertTrue(loadCanEnterInvitationCode(fixture.environment))
+        assertEquals(listOf("/v1/families/family/members"), fixture.paths.distinct())
+
+        // 누구든 연결되면 숨긴다
+        fixture.respond = {
+            200 to membersJson("""{"memberId":"m1","userId":"mom","name":"김순희","relation":"MOTHER","status":"ACTIVE"}""")
+        }
+        assertFalse(loadCanEnterInvitationCode(fixture.environment))
+    }
+
+    @Test
+    fun settingsCodeEntryWithoutFamilyOrInGuestModeSkipsTheServer() = withFixture(familyId = null) { fixture ->
+        assertTrue(loadCanEnterInvitationCode(fixture.environment))
+        fixture.environment.settings.isGuestMode = true
+        assertFalse(loadCanEnterInvitationCode(fixture.environment))
+        assertTrue(fixture.paths.isEmpty())
     }
 
     @Test
