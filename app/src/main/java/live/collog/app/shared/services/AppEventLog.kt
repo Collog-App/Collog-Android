@@ -65,7 +65,8 @@ object AppEventCode {
 /**
  * 이용 기록(앱 이벤트). 기기에 쌓아 두고(최대 [CAPACITY]개, 넘치면 오래된 것부터 버림) 앱이 앞으로 올 때와
  * 새 이벤트 뒤에 묶어 보낸다. 실패는 조용히 넘긴다: 화면에 알리지 않고, 부른 쪽은 보내기를 기다리지 않는다.
- * 둘러보기에서는 남기지 않는다. 쌓을 때 사용자 ID 를 적고 지금 로그인한 사용자 것만 보낸다.
+ * 둘러보기에서는 남기지 않는다. 쌓을 때 사용자 ID 를 적고 지금 로그인한 사용자 것만 보내며, 다른 사람이 로그인하면
+ * 앞 사람 것은 지운다.
  * [prefs]가 없으면 아무것도 하지 않는다(단위 테스트 기본값). 모든 함수는 메인 스레드에서 부른다.
  */
 class AppEventLog(
@@ -88,6 +89,7 @@ class AppEventLog(
     /** 로그인한 사용자의 이벤트를 남긴다. */
     fun record(name: String, code: String? = null, subjectId: String? = null, callId: String? = null) = quietly {
         val userId = signedInUserId() ?: return
+        dropOtherUsers(userId)
         enqueue(userId, name, code, subjectId, callId)
     }
 
@@ -98,6 +100,7 @@ class AppEventLog(
     fun recordAppOpen() = quietly {
         val prefs = prefs ?: return
         val userId = signedInUserId() ?: return
+        dropOtherUsers(userId)
         val marker = "$userId ${now().atZone(Seoul).toLocalDate()}"
         if (prefs.getString(KEY_APP_OPEN, null) == marker) return
         prefs.edit().putString(KEY_APP_OPEN, marker).apply()
@@ -111,15 +114,17 @@ class AppEventLog(
         val recorded = prefs.getStringSet(KEY_STEPS, null).orEmpty()
         if (step in recorded) return
         prefs.edit().putStringSet(KEY_STEPS, (recorded + step).toMutableSet()).apply()
-        enqueue(signedInUserId(), AppEvents.ONBOARDING_STEP, code = step)
+        val userId = signedInUserId()
+        userId?.let(::dropOtherUsers)
+        enqueue(userId, AppEvents.ONBOARDING_STEP, code = step)
     }
 
     /**
-     * 직접 로그아웃·계정 삭제 때 쌓인 것과 하루 첫 실행 표시(지난 사용자 ID 가 들어 있다)를 지운다.
-     * 지난 가입 단계 표시는 설치 기준이라 둔다.
+     * 직접 로그아웃·계정 삭제 때 사용자 기록과 하루 첫 실행 표시(지난 사용자 ID 가 들어 있다)를 지운다.
+     * 로그인 전 단계 기록과 지난 가입 단계 표시는 사람과 상관없는 설치 기준이라 둔다.
      */
     fun clear() = quietly {
-        queue = emptyList()
+        queue = queue.filter { it.userId == null }
         save()
         prefs?.edit()?.remove(KEY_APP_OPEN)?.apply()
     }
@@ -137,10 +142,13 @@ class AppEventLog(
         }
     }
 
-    /** 로그인 전 기록, 그다음 지금 사용자 것을 묶어 보낸다. 다른 계정 것은 그 계정이 다시 로그인할 때까지 둔다. */
+    /** 로그인 전 기록, 그다음 지금 사용자 것을 묶어 보낸다. */
     internal suspend fun send() {
         sendAll(userId = null, batchSize = ANONYMOUS_BATCH)
-        signedInUserId()?.let { sendAll(it, BATCH) }
+        signedInUserId()?.let {
+            dropOtherUsers(it)
+            sendAll(it, BATCH)
+        }
     }
 
     private suspend fun sendAll(userId: String?, batchSize: Int) {
@@ -185,6 +193,16 @@ class AppEventLog(
         queue = (queue + Queued(userId, event)).takeLast(CAPACITY)
         save()
         flush()
+    }
+
+    /**
+     * 다른 사람이 로그인했으면(강제 로그아웃 뒤 다른 계정 포함) 앞 사람의 쌓인 기록을 지운다. 같은 사람이 다시 로그인하면
+     * 401 로 남겨 둔 것을 그대로 보낸다. 로그인 전 단계 기록은 둔다. 로그인 직후 `app_open` 을 부르므로 그때 지워진다.
+     */
+    private fun dropOtherUsers(userId: String) {
+        if (queue.none { it.userId != null && it.userId != userId }) return
+        queue = queue.filter { it.userId == null || it.userId == userId }
+        save()
     }
 
     private fun signedInUserId(): String? {

@@ -279,8 +279,47 @@ class AppEventLogTests {
         val request = fixture.requests.single()
         assertEquals("Bearer other-token", request.header("Authorization"))
         assertEquals(listOf("app_open"), request.events().map { it.text("name") })
-        // 앞 사람 것은 그 사람이 다시 로그인할 때까지 남는다
+        // 다른 사람이 로그인했으니 앞 사람 것은 지웠다
+        assertTrue(events.queued.isEmpty())
+    }
+
+    @Test
+    fun anotherUserSigningInAfterAForcedSignOutDropsThePreviousUsersEvents() = withEvents { fixture, events ->
+        events.record(AppEvents.REPORT_VIEW, code = AppEventCode.DIRECT, subjectId = "mom")
+        // 세션이 만료돼 강제로 로그아웃됐다(401 규칙대로 남아 있다)
+        fixture.environment.session.signOut()
         assertEquals(listOf("me"), events.queued.map { it.userId })
+
+        signIn(fixture, "other")
+        // 로그인 직후 앱이 부르는 app_open 에서 앞 사람 것을 지운다
+        events.recordAppOpen()
+
+        assertEquals(listOf("other"), events.queued.map { it.userId })
+    }
+
+    @Test
+    fun theSameUserSigningInAgainKeepsTheirEvents() = withEvents { fixture, events ->
+        events.record(AppEvents.REPORT_VIEW, code = AppEventCode.DIRECT, subjectId = "mom")
+        fixture.environment.session.signOut()
+
+        signIn(fixture, "me")
+        events.recordAppOpen()
+
+        assertEquals(listOf("report_view", "app_open"), events.queued.map { it.event.name })
+    }
+
+    @Test
+    fun signingOutKeepsThePreLoginSteps() = withEvents { fixture, events ->
+        fixture.environment.session.signOut()
+        events.recordOnboardingStep(AppEventCode.WELCOME)
+        signIn(fixture, "me")
+        events.record(AppEvents.APP_OPEN)
+        fixture.respond = { request -> if (request.url.encodedPath == "/v1/auth/logout") 200 to "{}" else 503 to "{}" }
+
+        fixture.environment.signOut()
+
+        assertEquals(listOf<String?>(null), events.queued.map { it.userId })
+        assertEquals("WELCOME", events.queued.single().event.code)
     }
 
     @Test
@@ -298,16 +337,16 @@ class AppEventLogTests {
         events.recordAppOpen()
         assertEquals(2, events.queued.size)
 
-        // 같은 날 다른 계정은 그 계정의 첫 번째다
+        // 같은 날 다른 계정은 그 계정의 첫 번째다(앞 계정의 쌓인 것은 지운다)
         signIn(fixture, "other")
         events.recordAppOpen()
-        assertEquals(listOf("me", "me", "other"), events.queued.map { it.userId })
+        assertEquals(listOf("other"), events.queued.map { it.userId })
 
         // 로그인하지 않았으면 남기지 않는다
         fixture.environment.session.signOut()
         clock = Instant.parse("2026-11-25T00:00:00Z")
         events.recordAppOpen()
-        assertEquals(3, events.queued.size)
+        assertEquals(1, events.queued.size)
     }
 
     @Test
