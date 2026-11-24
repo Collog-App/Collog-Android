@@ -91,7 +91,10 @@ class AppEventLog(
         enqueue(userId, name, code, subjectId, callId)
     }
 
-    /** `app_open`: 로그인한 사용자가 앱을 앞으로 가져온 그날(서울 날짜) 첫 번째만 남긴다. */
+    /**
+     * `app_open`: 로그인한 사용자가 앱을 앞으로 가져온 그날(서울 날짜) 첫 번째만 남긴다. 앱이 앞에 있는 동안 로그인을
+     * 마친 직후에도 부른다(가입·로그인한 날이 빠지지 않게).
+     */
     fun recordAppOpen() = quietly {
         val prefs = prefs ?: return
         val userId = signedInUserId() ?: return
@@ -111,10 +114,14 @@ class AppEventLog(
         enqueue(signedInUserId(), AppEvents.ONBOARDING_STEP, code = step)
     }
 
-    /** 로그아웃·계정 삭제 때 쌓인 것을 지운다. 하루 첫 실행·지난 가입 단계 표시는 설치 기준이라 둔다. */
+    /**
+     * 직접 로그아웃·계정 삭제 때 쌓인 것과 하루 첫 실행 표시(지난 사용자 ID 가 들어 있다)를 지운다.
+     * 지난 가입 단계 표시는 설치 기준이라 둔다.
+     */
     fun clear() = quietly {
         queue = emptyList()
         save()
+        prefs?.edit()?.remove(KEY_APP_OPEN)?.apply()
     }
 
     /** 쌓인 것을 뒤에서 보낸다. 보내는 중이면 끝난 뒤 한 번 더 본다. 보내다 난 예외는 [sendFailure]가 받는다. */

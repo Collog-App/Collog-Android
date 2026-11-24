@@ -228,13 +228,32 @@ class AppEventLogTests {
     }
 
     @Test
+    fun signingOutForgetsTheDayMarkerWithTheUserId() = withEvents { fixture, events ->
+        fixture.respond = { 200 to "{}" }
+        events.recordAppOpen()
+        assertTrue(fixture.eventPreferences.getAll().values.any { "me" in it.toString() })
+
+        fixture.environment.signOut()
+
+        // 기기에 지난 사용자 ID 가 남지 않는다
+        assertTrue(fixture.eventPreferences.getAll().values.none { "me" in it.toString() })
+        // 같은 날 다시 로그인하면 그날 첫 실행으로 다시 센다
+        signIn(fixture, "me")
+        events.recordAppOpen()
+        assertEquals(listOf("app_open"), events.queued.map { it.event.name })
+    }
+
+    @Test
     fun deletingTheAccountClearsTheQueue() = withEvents { fixture, events ->
         fixture.respond = { 204 to "" }
         events.record(AppEvents.APP_OPEN)
 
+        events.recordAppOpen()
+
         deleteAccountAndSignOut(fixture.environment)
 
         assertTrue(events.queued.isEmpty())
+        assertTrue(fixture.eventPreferences.getAll().values.none { "me" in it.toString() })
     }
 
     @Test

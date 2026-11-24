@@ -140,6 +140,8 @@ fun RootScreen() {
     LaunchedEffect(Unit) { authFlow.resolve(environment) }
     OnChange(environment.session.isAuthenticated) { _, authenticated ->
         callCenter.sessionDidChange()
+        // 앱을 보고 있는 채 로그인을 마쳤다: 그날 첫 실행으로 센다(하루 한 번 규칙은 그대로)
+        if (authenticated) environment.events.recordAppOpen()
         if (!authenticated) {
             callCenter.endActiveCall()
             launcher.dismiss()
