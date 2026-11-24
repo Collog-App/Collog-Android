@@ -7,6 +7,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import live.collog.app.features.call.models.CallPhase
 import live.collog.app.features.call.models.CallSafety
+import live.collog.app.shared.services.AppEvents
 import live.collog.app.shared.services.api.CollogTimestamp
 
 // iOS CallCenter+Notifications. APNs·PushKit 대신 FCM 토큰 하나로 통화·리포트 알림을 받는다.
@@ -130,6 +131,7 @@ fun CallCenter.handleIncomingPush(data: Map<String, String>) {
     activeCall = call
     // 벨은 Telecom 등록을 기다리지 않고 바로 울린다(core-telecom은 addCall 직후 CallStyle 알림을 권한다).
     platform.showIncoming(call, expiry)
+    if (platform.notificationsEnabled()) incomingCallShown(callId)
     scope.launch {
         val added = platform.callSystem.add(
             SystemCall(uuid, callerName, callerId ?: "collog", incoming = true),
@@ -142,7 +144,10 @@ fun CallCenter.handleIncomingPush(data: Map<String, String>) {
         if (added) systemCalls += uuid else log("시스템 통화 등록 실패, 알림으로만 수신해요")
         // 알림 권한이 없으면 처음 올린 알림은 버려진다. 자체 관리 통화의 CallStyle 예외는 Telecom에 통화가
         // 있어야 적용되므로, 등록을 마친 지금 다시 올린다(그대로 두면 화면도 벨도 없이 놓친다).
-        if (added && !platform.notificationsEnabled()) platform.showIncoming(call, expiry)
+        if (added && !platform.notificationsEnabled()) {
+            platform.showIncoming(call, expiry)
+            incomingCallShown(callId)
+        }
         incomingCallReported = true
         log("수신 통화 표시")
         monitorCall(callId)
@@ -151,6 +156,17 @@ fun CallCenter.handleIncomingPush(data: Map<String, String>) {
             answerIncomingCall()
         }
     }
+}
+
+/**
+ * 이용 기록 `incoming_call_shown`: 받는 쪽에 울림 화면이 떴다. 알림 권한이 있어 수신 알림(벨·전체 화면)을 올렸거나,
+ * Telecom 에 올라 권한 없이도 다시 올렸거나, 앱을 보고 있어 앱 안 수신 화면이 그려졌을 때 부른다. 통화마다 한 번.
+ */
+fun CallCenter.incomingCallShown(callId: String) {
+    val call = activeCall ?: return
+    if (call.id != callId || call.direction != CallCenter.Direction.Incoming || shownIncomingCallId == callId) return
+    shownIncomingCallId = callId
+    environment.events.record(AppEvents.INCOMING_CALL_SHOWN, callId = callId)
 }
 
 private fun CallCenter.declineIncomingCall(callId: String) {

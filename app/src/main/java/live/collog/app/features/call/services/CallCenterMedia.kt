@@ -11,6 +11,7 @@ import io.livekit.android.room.track.Track
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import live.collog.app.features.call.models.CallPhase
+import live.collog.app.features.call.models.CallSafety
 import live.collog.app.shared.services.api.AudioConstraints
 
 // iOS CallCenter+Media.
@@ -71,7 +72,7 @@ internal fun CallCenter.setMuted(muted: Boolean) {
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            failCall(call.uuid, "마이크 상태를 바꾸지 못해 통화를 종료했어요.")
+            failCall(call.uuid, "마이크 상태를 바꾸지 못해 통화를 종료했어요.", failure = CallSafety.connectFailure(error))
         }
     }
 }
@@ -154,7 +155,11 @@ internal fun CallCenter.publishMicrophoneIfReady() {
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            failCall(call.uuid, "마이크를 사용할 수 없어요. ${error.message.orEmpty()}".trim())
+            failCall(
+                call.uuid,
+                "마이크를 사용할 수 없어요. ${error.message.orEmpty()}".trim(),
+                failure = CallSafety.connectFailure(error),
+            )
         }
     }
 }
@@ -195,7 +200,11 @@ private fun CallCenter.handleRoomEvent(room: Room, event: RoomEvent) {
             when (event.reason) {
                 DisconnectReason.ROOM_DELETED -> handleMediaError(RoomDeletedException(), call.uuid)
                 DisconnectReason.CLIENT_INITIATED -> finishRemoteCall(EndCause.Local)
-                else -> failCall(call.uuid, "통화 연결이 끊어졌어요. 인터넷 상태를 확인한 뒤 다시 걸어주세요.")
+                else -> failCall(
+                    call.uuid,
+                    "통화 연결이 끊어졌어요. 인터넷 상태를 확인한 뒤 다시 걸어주세요.",
+                    failure = CallSafety.disconnectFailure(event.reason),
+                )
             }
         }
         is RoomEvent.ParticipantConnected -> {
@@ -234,7 +243,7 @@ private suspend fun CallCenter.restoreAfterReconnect(room: Room) {
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            failCall(call.uuid, "마이크 상태를 복구하지 못해 통화를 종료했어요.")
+            failCall(call.uuid, "마이크 상태를 복구하지 못해 통화를 종료했어요.", failure = CallSafety.connectFailure(error))
             return
         }
     }

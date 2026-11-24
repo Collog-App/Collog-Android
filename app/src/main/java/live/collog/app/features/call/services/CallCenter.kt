@@ -20,6 +20,8 @@ import kotlinx.coroutines.launch
 import live.collog.app.config.AppEnvironment
 import live.collog.app.features.call.models.CallPhase
 import live.collog.app.features.call.models.CallSafety
+import live.collog.app.shared.services.AppEventCode
+import live.collog.app.shared.services.AppEvents
 import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.ApiQuestion
 import live.collog.app.shared.services.api.CallAccepted
@@ -111,6 +113,8 @@ class CallCenter(
     internal var reportNotificationsAuthorized = false
     internal var uploadJob: Job? = null
     internal val uploads: RawAudioUploadQueue? by lazy { makeUploadQueue() }
+    /** `incoming_call_shown`을 남긴 마지막 통화(알림과 앱 화면이 같이 떠도 한 번만). */
+    internal var shownIncomingCallId: String? = null
 
     internal var isAudioSessionActive = false
     internal var isMediaConnected = false
@@ -247,7 +251,7 @@ class CallCenter(
             if (activeCall?.uuid == pending.uuid) {
                 handleMediaError(error, pending.uuid)
             } else {
-                failCall(pending.uuid, error.message ?: "통화를 시작하지 못했어요")
+                failCall(pending.uuid, error.message ?: "통화를 시작하지 못했어요", failure = CallSafety.connectFailure(error))
             }
         }
     }
@@ -495,11 +499,23 @@ class CallCenter(
         platform.stopOngoing()
     }
 
-    fun failCall(uuid: UUID, message: String, microphone: Boolean = false) {
+    /**
+     * 통화를 실패로 끝낸다. [failure]는 이용 기록 `call_connect_failed` 의 code 로, 한 번도 연결되지 못한 통화만 남긴다
+     * (연결된 뒤 끊긴 것은 연결 실패가 아니다).
+     */
+    fun failCall(
+        uuid: UUID,
+        message: String,
+        microphone: Boolean = false,
+        failure: String = if (microphone) AppEventCode.MIC_PERMISSION else AppEventCode.OTHER,
+    ) {
         if (activeCall?.uuid != uuid && pendingOutgoing?.uuid != uuid) return
         val call = activeCall
         val acceptedHere = call?.let { it.id in answeredCallIds } ?: false
         val acceptRequestId = call?.let { acceptRequestIds[it.id] }
+        if (call?.connectedAtMillis == null) {
+            environment.events.record(AppEvents.CALL_CONNECT_FAILED, code = failure, callId = call?.id)
+        }
         callError = message
         needsMicrophoneSettings = microphone
         reportEnded(uuid, EndCause.Local)
@@ -563,7 +579,9 @@ class CallCenter(
                     updateCall { it.copy(notice = "통화 상태를 확인하고 있어요. 인터넷 상태를 확인해 주세요.") }
                     statusUnavailable = true
                     if (Duration.between(lastSuccess, Instant.now()).seconds >= 30) {
-                        activeCall?.let { failCall(it.uuid, "통화 상태를 확인할 수 없어 통화를 종료했어요.") }
+                        activeCall?.let {
+                            failCall(it.uuid, "통화 상태를 확인할 수 없어 통화를 종료했어요.", failure = CallSafety.connectFailure(error))
+                        }
                         return@launch
                     }
                 }
@@ -584,7 +602,7 @@ class CallCenter(
             log("서버 통화 종료")
             finishRemoteCall()
         } else {
-            failCall(uuid, error.message ?: "통화를 연결하지 못했어요")
+            failCall(uuid, error.message ?: "통화를 연결하지 못했어요", failure = CallSafety.connectFailure(error))
         }
     }
 

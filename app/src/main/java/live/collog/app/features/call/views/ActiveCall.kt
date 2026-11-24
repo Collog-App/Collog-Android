@@ -7,10 +7,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.ui.platform.LocalContext
 import live.collog.app.features.call.models.CallPhase
 import live.collog.app.features.call.services.CallCenter
+import live.collog.app.features.call.services.incomingCallShown
 import live.collog.app.features.call.services.toggleMute
 import live.collog.app.features.call.services.toggleSpeaker
 import live.collog.app.shared.ui.designsystem.CollogColors
@@ -22,13 +24,16 @@ import live.collog.app.shared.ui.designsystem.CollogType
 @Composable
 fun ActiveCallScreen(callCenter: CallCenter, call: CallCenter.ActiveCall) {
     key(call.id) {
+        val isIncoming = call.direction == CallCenter.Direction.Incoming && call.phase == CallPhase.Ringing
+        // 이용 기록: 앱을 보고 있으면 이 화면이 울림 화면이다(알림이 못 떴어도)
+        if (isIncoming) LaunchedEffect(Unit) { callCenter.incomingCallShown(call.id) }
         CallScreen(
             peerName = call.peerName,
             phase = call.phase,
             connectedAtMillis = call.connectedAtMillis,
             questions = call.questions,
             notice = callCenter.incomingAnswerError ?: call.notice,
-            isIncoming = call.direction == CallCenter.Direction.Incoming && call.phase == CallPhase.Ringing,
+            isIncoming = isIncoming,
             isAnswering = callCenter.incomingAnswerRequested,
             canAnswer = callCenter.canAnswerIncomingCall,
             onAnswer = { callCenter.answerIncomingCall() },
