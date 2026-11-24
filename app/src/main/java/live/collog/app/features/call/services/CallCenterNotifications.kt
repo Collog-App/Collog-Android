@@ -128,6 +128,7 @@ fun CallCenter.handleIncomingPush(data: Map<String, String>) {
         phase = CallPhase.Ringing,
         questions = questions,
     )
+    postCallQuestion = null
     activeCall = call
     // 벨은 Telecom 등록을 기다리지 않고 바로 울린다(core-telecom은 addCall 직후 CallStyle 알림을 권한다).
     platform.showIncoming(call, expiry)

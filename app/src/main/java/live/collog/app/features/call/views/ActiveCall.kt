@@ -47,6 +47,24 @@ fun ActiveCallScreen(callCenter: CallCenter, call: CallCenter.ActiveCall) {
     }
 }
 
+/**
+ * 통화 종료 화면(CallPhase.Ended)과 통화 뒤 한 줄 질문(이용 기록 약속). 답하거나 닫을 때까지 머문다.
+ * 통화는 이미 정리돼 마이크·통화 서비스·시스템 통화는 남아 있지 않다. 새 통화가 오면 CallCenter 가 질문을 내린다.
+ */
+@Composable
+fun EndedCallScreen(callCenter: CallCenter, question: CallCenter.PostCallQuestion) {
+    key(question.callId) {
+        CallScreen(
+            peerName = question.peerName,
+            phase = CallPhase.Ended,
+            questions = question.questions,
+            onPostCallAnswer = callCenter::answerPostCallQuestion,
+            onPostCallClose = callCenter::dismissPostCallQuestion,
+            onEnd = callCenter::dismissPostCallQuestion,
+        )
+    }
+}
+
 /** iOS `.alert("통화를 진행할 수 없어요")`. 마이크가 거부됐으면 앱 설정으로 보낸다. */
 @Composable
 fun CallErrorAlert(callCenter: CallCenter, onDismissed: () -> Unit = {}) {

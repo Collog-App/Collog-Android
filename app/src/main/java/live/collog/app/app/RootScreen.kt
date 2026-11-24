@@ -65,6 +65,7 @@ import live.collog.app.features.call.views.ActiveCallScreen
 import live.collog.app.features.call.views.CallErrorAlert
 import live.collog.app.features.call.views.CallLauncherOverlay
 import live.collog.app.features.call.views.CallScreen
+import live.collog.app.features.call.views.EndedCallScreen
 import live.collog.app.features.health.services.LocalHealthLink
 import live.collog.app.features.health.views.HealthLinkSheetHost
 import live.collog.app.features.home.models.FamilyContact
@@ -237,8 +238,9 @@ fun RootScreen() {
             }
 
             val activeCall = callCenter.activeCall
+            val endedCall = callCenter.postCallQuestion
             AnimatedVisibility(
-                visible = activeCall != null,
+                visible = activeCall != null || endedCall != null,
                 enter = slideInVertically { it } + fadeIn(),
                 exit = slideOutVertically { it } + fadeOut(),
             ) {
@@ -246,6 +248,10 @@ fun RootScreen() {
                     // iOS fullScreenCover처럼 통화 화면은 뒤로 가기로 닫히지 않는다.
                     BackHandler {}
                     ActiveCallScreen(callCenter, activeCall)
+                } else if (endedCall != null) {
+                    // 통화 뒤 한 줄 질문: 뒤로 가기는 답하지 않고 닫는다
+                    BackHandler { callCenter.dismissPostCallQuestion() }
+                    EndedCallScreen(callCenter, endedCall)
                 }
             }
 

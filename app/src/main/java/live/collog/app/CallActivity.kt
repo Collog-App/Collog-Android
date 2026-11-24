@@ -23,6 +23,7 @@ import live.collog.app.features.call.services.CallService
 import live.collog.app.features.call.services.LocalCallCenter
 import live.collog.app.features.call.views.ActiveCallScreen
 import live.collog.app.features.call.views.CallErrorAlert
+import live.collog.app.features.call.views.EndedCallScreen
 
 /**
  * 알림에서 여는 통화 화면(iOS CallKit 수신 화면 대응). 매니페스트에서 잠금 화면 위에 뜨도록 선언했고
@@ -50,15 +51,22 @@ class CallActivity : ComponentActivity() {
                 LocalCallCenter provides callCenter,
             ) {
                 val call = callCenter.activeCall
+                val endedCall = callCenter.postCallQuestion
                 Box(Modifier.fillMaxSize().background(Color(0xFF111316))) {
                     if (call != null) {
                         BackHandler { moveTaskToBack(true) }
                         ActiveCallScreen(callCenter, call)
+                    } else if (endedCall != null) {
+                        // 여기서 보던 통화가 끝났으면 한 줄 질문도 여기서 묻는다(답하거나 닫으면 닫힌다)
+                        BackHandler { callCenter.dismissPostCallQuestion() }
+                        EndedCallScreen(callCenter, endedCall)
                     }
                     CallErrorAlert(callCenter, onDismissed = ::finish)
                 }
                 LaunchedEffect(Unit) {
-                    snapshotFlow { callCenter.activeCall == null && callCenter.callError == null }.first { it }
+                    snapshotFlow {
+                        callCenter.activeCall == null && callCenter.callError == null && callCenter.postCallQuestion == null
+                    }.first { it }
                     finish()
                 }
             }

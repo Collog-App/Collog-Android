@@ -57,6 +57,15 @@ class CallCenter(
 
     data class PendingOutgoing(val uuid: UUID, val calleeId: String, val name: String)
 
+    /** 통화 종료 화면에서 물을 지난 통화(이용 기록 `post_call_answer`). [ownerId]는 그 통화를 건 로그인 사용자. */
+    data class PostCallQuestion(
+        val callId: String,
+        val peerId: String?,
+        val peerName: String,
+        val questions: List<String>,
+        val ownerId: String,
+    )
+
     var activeCall by mutableStateOf<ActiveCall?>(null)
         internal set
     var pendingOutgoing by mutableStateOf<PendingOutgoing?>(null)
@@ -75,6 +84,9 @@ class CallCenter(
         internal set
     var callError by mutableStateOf<String?>(null)
     var needsMicrophoneSettings by mutableStateOf(false)
+        internal set
+    /** 끝난 통화의 한 줄 질문. 답하거나 닫거나 새 통화가 시작되면 null. 마이크·통화 서비스는 이미 풀려 있다. */
+    var postCallQuestion by mutableStateOf<PostCallQuestion?>(null)
         internal set
 
     val canAnswerIncomingCall: Boolean
@@ -153,6 +165,8 @@ class CallCenter(
             discardAnalysisRecording()
             teardown()
         }
+        // 다른 계정(로그아웃 포함)에게 지난 사람의 통화를 묻지 않는다
+        if (postCallQuestion?.ownerId != environment.session.user?.id) postCallQuestion = null
         uploads?.discardInvalidOwners()
         resumePendingUploads()
     }
@@ -166,6 +180,7 @@ class CallCenter(
         discardAnalysisRecording()
         uploads?.discardAll()
         teardown()
+        postCallQuestion = null
         call ?: return
         try {
             if (call.direction == Direction.Incoming && !acceptedHere) {
@@ -186,6 +201,7 @@ class CallCenter(
         val userId = environment.session.user?.id ?: return
         if (!environment.session.isAuthenticated) return
         callOwnerId = userId
+        postCallQuestion = null
         val pending = PendingOutgoing(UUID.randomUUID(), calleeId, name)
         pendingOutgoing = pending
         scope.launch {
@@ -452,6 +468,7 @@ class CallCenter(
         // 원인을 따로 알리지 않은 채 남은 시스템 통화(발신 준비 중 로그아웃 등)는 여기서 내린다.
         val call = activeCall
         if (call != null && call.isSpeakerEnabled && call.uuid !in systemCalls) platform.setSpeakerFallback(false)
+        postCallQuestion = call?.let(::postCallQuestionFor)
         systemCalls.toList().forEach { reportEnded(it, EndCause.Local) }
         systemAnswered.clear()
         platform.stopQuestions()
@@ -501,7 +518,7 @@ class CallCenter(
 
     /**
      * 통화를 실패로 끝낸다. [failure]는 이용 기록 `call_connect_failed` 의 code 로, 한 번도 연결되지 못한 통화만 남긴다
-     * (연결된 뒤 끊긴 것은 연결 실패가 아니다).
+     * (연결된 뒤 끊긴 것은 연결 실패가 아니다). 실패 안내가 먼저라 통화 뒤 한 줄 질문은 묻지 않는다.
      */
     fun failCall(
         uuid: UUID,
@@ -520,6 +537,7 @@ class CallCenter(
         needsMicrophoneSettings = microphone
         reportEnded(uuid, EndCause.Local)
         teardown()
+        postCallQuestion = null
         call ?: return
         scope.launch {
             try {
@@ -574,6 +592,8 @@ class CallCenter(
                     if (CallSafety.isPermanentStatusError(error)) {
                         discardAnalysisRecording()
                         finishRemoteCall(EndCause.Local)
+                        // 정상적으로 끝난 통화가 아니라 한 줄 질문은 묻지 않는다
+                        postCallQuestion = null
                         return@launch
                     }
                     updateCall { it.copy(notice = "통화 상태를 확인하고 있어요. 인터넷 상태를 확인해 주세요.") }
@@ -604,6 +624,32 @@ class CallCenter(
         } else {
             failCall(uuid, error.message ?: "통화를 연결하지 못했어요", failure = CallSafety.connectFailure(error))
         }
+    }
+
+    // endregion
+
+    // region 통화 뒤 한 줄 질문 (이용 기록 post_call_answer)
+
+    /**
+     * 건 쪽이고, 추천 질문이 통화 화면에 있었고(CallScreen 은 질문이 있으면 늘 보인다), 실제로 연결됐던 통화만 묻는다.
+     * [teardown]이 정하고, 정상적으로 끝나지 않은 통화(실패·로그아웃·계정 바뀜·상태 확인 불가)는 부른 쪽이 내린다.
+     */
+    private fun postCallQuestionFor(call: ActiveCall): PostCallQuestion? {
+        if (call.direction != Direction.Outgoing || call.questions.isEmpty() || call.connectedAtMillis == null) return null
+        val ownerId = callOwnerId ?: return null
+        return PostCallQuestion(call.id, call.peerId, call.peerName, call.questions, ownerId)
+    }
+
+    /** [code] = YES·NO·NOT_SEEN. 통화마다 한 번 남기고 질문을 내린다. */
+    fun answerPostCallQuestion(code: String) {
+        val question = postCallQuestion ?: return
+        postCallQuestion = null
+        environment.events.record(AppEvents.POST_CALL_ANSWER, code = code, subjectId = question.peerId, callId = question.callId)
+    }
+
+    /** 답하지 않고 닫으면 아무것도 남기지 않는다. */
+    fun dismissPostCallQuestion() {
+        postCallQuestion = null
     }
 
     // endregion

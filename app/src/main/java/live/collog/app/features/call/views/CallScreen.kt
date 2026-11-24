@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import live.collog.app.features.call.models.CallDurationFormatter
 import live.collog.app.features.call.models.CallPhase
+import live.collog.app.shared.services.AppEventCode
 import live.collog.app.shared.ui.pressable
 import live.collog.app.shared.ui.designsystem.SpecColors
 import live.collog.app.shared.ui.designsystem.specText
@@ -68,6 +69,9 @@ fun CallScreen(
     isSpeakerEnabled: Boolean = false,
     onMute: (() -> Unit)? = null,
     onSpeaker: (() -> Unit)? = null,
+    /** 통화 종료 화면의 한 줄 질문. 주면 종료 버튼 자리에 질문을 둔다. */
+    onPostCallAnswer: ((String) -> Unit)? = null,
+    onPostCallClose: (() -> Unit)? = null,
     onEnd: () -> Unit,
 ) {
     // 실제 통화는 CallCenter가 준 시각을 쓴다. 체험 통화처럼 시각이 없으면 화면이 직접 잰다.
@@ -132,6 +136,8 @@ fun CallScreen(
                     onDecline = onEnd,
                     modifier = bottomInset.padding(bottom = 40.dp),
                 )
+            } else if (onPostCallAnswer != null && onPostCallClose != null) {
+                PostCallQuestion(onPostCallAnswer, onPostCallClose, bottomInset.padding(bottom = 40.dp))
             } else {
                 AudioControls(isMuted, isSpeakerEnabled, onMute, onSpeaker)
                 EndButton(onEnd, bottomInset.padding(bottom = 40.dp))
@@ -279,6 +285,51 @@ private fun EndButton(onEnd: () -> Unit, modifier: Modifier = Modifier) {
         CollogIcon("phone.down.fill", size = 36.dp, color = Color.White)
     }
 }
+
+/**
+ * 통화 뒤 한 줄 질문(이용 기록 `post_call_answer`). 피그마 없음: 통화 화면의 어두운 바탕·버튼 색을 따르고,
+ * 답을 끌지 않게 세 버튼을 같은 모양으로 둔다. 작은 화면에서도 질문 목록 아래에 들어가게 버튼을 한 줄에 둔다.
+ */
+@Composable
+private fun PostCallQuestion(onAnswer: (String) -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth().padding(horizontal = Spacing.x5), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            "이번 통화에서 추천 질문을 써 보셨나요?",
+            style = specText(Pretendard.SemiBold, 18f, Color.White),
+            textAlign = TextAlign.Center,
+        )
+        Row(Modifier.fillMaxWidth().padding(top = Spacing.x4), horizontalArrangement = Arrangement.spacedBy(Spacing.x2)) {
+            PostCallAnswers.forEach { (label, code) ->
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .heightIn(min = 52.dp)
+                        .background(CallSurface, RoundedCornerShape(15.dp))
+                        .pressable { onAnswer(code) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        label,
+                        style = specText(Pretendard.SemiBold, 16f, Color.White),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = Spacing.x1, vertical = Spacing.x2),
+                    )
+                }
+            }
+        }
+        Text(
+            "닫기",
+            style = specText(Pretendard.Medium, 16f, CallStatusText),
+            modifier = Modifier.padding(top = Spacing.x2).pressable(onClick = onClose).padding(Spacing.x3),
+        )
+    }
+}
+
+private val PostCallAnswers = listOf(
+    "써 봤어요" to AppEventCode.YES,
+    "안 썼어요" to AppEventCode.NO,
+    "못 봤어요" to AppEventCode.NOT_SEEN,
+)
 
 @Composable
 private fun NoticeView(text: String, modifier: Modifier = Modifier) {
