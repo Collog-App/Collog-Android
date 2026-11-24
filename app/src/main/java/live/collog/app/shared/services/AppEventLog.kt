@@ -136,6 +136,8 @@ class AppEventLog(
 
     private suspend fun sendAll(userId: String?, batchSize: Int) {
         while (true) {
+            // 묶음 사이에 로그아웃하거나 다른 사람이 로그인했으면 멈춘다(앞 사람 것을 새 토큰으로 보내지 않는다)
+            if (userId != null && signedInUserId() != userId) return
             val events = queue.filter { it.userId == userId }.take(batchSize).map { it.event }
             if (events.isEmpty()) return
             try {

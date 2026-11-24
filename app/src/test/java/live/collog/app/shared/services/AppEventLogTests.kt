@@ -2,12 +2,15 @@ package live.collog.app.shared.services
 
 import java.io.IOException
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -96,6 +99,28 @@ class AppEventLogTests {
 
         assertEquals(listOf(50, 50, 20), fixture.requests.map { it.events().size })
         assertTrue(events.queued.isEmpty())
+    }
+
+    @Test
+    fun stopsBetweenBatchesWhenTheSignedInUserChanges() = withEvents { fixture, events ->
+        val received = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        fixture.respond = {
+            received.countDown()
+            release.await(5, TimeUnit.SECONDS)
+            200 to "{}"
+        }
+        repeat(60) { events.record(AppEvents.REPORT_VIEW, code = AppEventCode.DIRECT, subjectId = "mom") }
+
+        val sending = CoroutineScope(Dispatchers.Default).launch { events.send() }
+        assertTrue(received.await(5, TimeUnit.SECONDS))
+        // 첫 묶음 응답을 기다리는 사이 다른 사람이 로그인했다
+        signIn(fixture, "other")
+        release.countDown()
+        sending.join()
+
+        assertEquals(1, fixture.requests.size)
+        assertEquals(List(10) { "me" }, events.queued.map { it.userId })
     }
 
     @Test
