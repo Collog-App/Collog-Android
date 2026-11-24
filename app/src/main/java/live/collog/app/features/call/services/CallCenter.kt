@@ -534,14 +534,15 @@ class CallCenter(
         val call = activeCall
         val acceptedHere = call?.let { it.id in answeredCallIds } ?: false
         val acceptRequestId = call?.let { acceptRequestIds[it.id] }
-        if (call?.connectedAtMillis == null) {
-            environment.events.record(AppEvents.CALL_CONNECT_FAILED, code = failure, callId = call?.id)
-        }
         callError = message
         needsMicrophoneSettings = microphone
         reportEnded(uuid, EndCause.Local)
         teardown()
         postCallQuestion = null
+        // 기록은 통화를 정리한 뒤에 남긴다(기록이 실패해도 정리는 이미 끝났다)
+        if (call?.connectedAtMillis == null) {
+            environment.events.record(AppEvents.CALL_CONNECT_FAILED, code = failure, callId = call?.id)
+        }
         call ?: return
         scope.launch {
             try {

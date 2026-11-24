@@ -1,5 +1,6 @@
 package live.collog.app.features.call
 
+import android.content.SharedPreferences
 import io.livekit.android.events.DisconnectReason
 import io.livekit.android.room.RoomException
 import java.io.IOException
@@ -18,6 +19,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import live.collog.app.MemoryPreferences
 import live.collog.app.TestEnvironment
 import live.collog.app.features.call.models.CallPhase
 import live.collog.app.features.call.models.CallSafety
@@ -35,6 +37,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+
+/** 쓰기가 늘 실패하는 이용 기록 저장소. */
+private class BrokenPreferences : SharedPreferences by MemoryPreferences() {
+    override fun edit(): SharedPreferences.Editor = throw IllegalStateException("저장 공간이 없어요")
+}
 
 /** 통화 이용 기록: `incoming_call_shown`(울림 화면이 떴을 때 통화마다 한 번), `call_connect_failed`(실패로 끝났을 때만). */
 class CallEventTests {
@@ -188,6 +195,21 @@ class CallEventTests {
 
         assertNull(center.activeCall)
         assertTrue(events(AppEvents.CALL_CONNECT_FAILED).isEmpty())
+    }
+
+    @Test
+    fun failingToRecordNeverStopsTheCallCleanup() {
+        // 이 환경의 Main 은 setUp 의 fixture 가 tearDown 에서 되돌린다
+        val broken = TestEnvironment(recordsEvents = true, eventPreferences = BrokenPreferences())
+        val brokenCenter = CallCenter(broken.environment, platform, scope)
+        val ringing = call(CallCenter.Direction.Outgoing, CallPhase.Ringing)
+        brokenCenter.activeCall = ringing
+
+        brokenCenter.failCall(ringing.uuid, "통화를 연결하지 못했어요", failure = AppEventCode.SERVER)
+
+        assertNull(brokenCenter.activeCall)
+        assertEquals("통화를 연결하지 못했어요", brokenCenter.callError)
+        assertEquals(1, platform.stoppedOngoing)
     }
 
     @Test

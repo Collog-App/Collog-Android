@@ -94,11 +94,11 @@ class TestEnvironment(
     familyId: String? = "family",
     signupCompleted: Boolean = true,
     recordsEvents: Boolean = false,
+    /** 이용 기록 저장소. [recordsEvents]일 때만 환경에 넘긴다(아니면 기록하지 않아 다른 테스트의 요청 목록에 섞이지 않는다). */
+    val eventPreferences: SharedPreferences = MemoryPreferences(),
 ) {
     val preferences = MemoryPreferences()
     val credentials = MemoryCredentials()
-    /** 이용 기록 저장소. [recordsEvents]일 때만 환경에 넘긴다(아니면 기록하지 않아 다른 테스트의 요청 목록에 섞이지 않는다). */
-    val eventPreferences = MemoryPreferences()
     // OkHttp가 자기 스레드에서 요청을 기록하므로 동기화된 목록을 쓴다.
     val paths: MutableList<String> = Collections.synchronizedList(mutableListOf())
     val requests: MutableList<Request> = Collections.synchronizedList(mutableListOf())

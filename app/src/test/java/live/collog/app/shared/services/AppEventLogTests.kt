@@ -1,9 +1,11 @@
 package live.collog.app.shared.services
 
+import android.content.SharedPreferences
 import java.io.IOException
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,6 +34,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+
+/** 읽기는 되고([queue]가 있으면 그것을 돌려준다) 쓰기는 늘 실패하는 저장소. */
+private class BrokenPreferences(private val queue: String? = null) : SharedPreferences by MemoryPreferences() {
+    override fun getString(key: String, defValue: String?): String? = if (key == "events.queue") queue else defValue
+    override fun edit(): SharedPreferences.Editor = throw IllegalStateException("저장 공간이 없어요")
+}
 
 /** 이용 기록 쌓기·보내기(약속 문서 「앱 쪽 보내기 규칙」). 서버는 가짜 서버로 대신한다. */
 class AppEventLogTests {
@@ -360,6 +368,39 @@ class AppEventLogTests {
         withContext(Dispatchers.Default) {
             withTimeout(2_000) { while (events.queued.isNotEmpty()) delay(10) }
         }
+    }
+
+    @Test
+    fun storageFailuresNeverEscapeTheRecordingFunctions() = runTest {
+        val fixture = TestEnvironment(recordsEvents = true, eventPreferences = BrokenPreferences())
+        try {
+            val events = fixture.environment.events
+            events.record(AppEvents.APP_OPEN)
+            events.recordAppOpen()
+            events.recordOnboardingStep(AppEventCode.WELCOME)
+            events.flush()
+            events.clear()
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun backgroundSendFailuresAreHandledInsideTheLog() = withEvents { fixture, _ ->
+        // 보낸 뒤 저장이 실패한다: 보내기 코루틴의 예외는 기록 부품이 받고 부른 범위로 새지 않는다
+        val stored = MemoryPreferences()
+        AppEventLog(fixture.environment, stored, idleScope()).record(AppEvents.APP_OPEN)
+        val broken = BrokenPreferences(queue = stored.getAll().values.filterIsInstance<String>().single())
+        var leaked: Throwable? = null
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + CoroutineExceptionHandler { _, e -> leaked = e })
+        val events = AppEventLog(fixture.environment, broken, scope)
+        fixture.respond = { 200 to "{}" }
+
+        events.flush()
+
+        fixture.awaitPath("/v1/events")
+        withContext(Dispatchers.Default) { delay(200) }
+        assertNull(leaked)
     }
 
     @Test

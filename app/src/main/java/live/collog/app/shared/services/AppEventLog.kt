@@ -1,11 +1,13 @@
 package live.collog.app.shared.services
 
 import android.content.SharedPreferences
+import android.util.Log
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -84,13 +86,13 @@ class AppEventLog(
     internal val queued: List<Queued> get() = queue
 
     /** 로그인한 사용자의 이벤트를 남긴다. */
-    fun record(name: String, code: String? = null, subjectId: String? = null, callId: String? = null) {
+    fun record(name: String, code: String? = null, subjectId: String? = null, callId: String? = null) = quietly {
         val userId = signedInUserId() ?: return
         enqueue(userId, name, code, subjectId, callId)
     }
 
     /** `app_open`: 로그인한 사용자가 앱을 앞으로 가져온 그날(서울 날짜) 첫 번째만 남긴다. */
-    fun recordAppOpen() {
+    fun recordAppOpen() = quietly {
         val prefs = prefs ?: return
         val userId = signedInUserId() ?: return
         val marker = "$userId ${now().atZone(Seoul).toLocalDate()}"
@@ -100,7 +102,7 @@ class AppEventLog(
     }
 
     /** `onboarding_step`: 단계마다 설치당 한 번. 로그인 전 단계는 사용자 없이 쌓는다. */
-    fun recordOnboardingStep(step: String) {
+    fun recordOnboardingStep(step: String) = quietly {
         val prefs = prefs ?: return
         if (environment.settings.isGuestMode) return
         val recorded = prefs.getStringSet(KEY_STEPS, null).orEmpty()
@@ -110,17 +112,17 @@ class AppEventLog(
     }
 
     /** 로그아웃·계정 삭제 때 쌓인 것을 지운다. 하루 첫 실행·지난 가입 단계 표시는 설치 기준이라 둔다. */
-    fun clear() {
+    fun clear() = quietly {
         queue = emptyList()
         save()
     }
 
-    /** 쌓인 것을 뒤에서 보낸다. 보내는 중이면 끝난 뒤 한 번 더 본다. */
-    fun flush() {
+    /** 쌓인 것을 뒤에서 보낸다. 보내는 중이면 끝난 뒤 한 번 더 본다. 보내다 난 예외는 [sendFailure]가 받는다. */
+    fun flush() = quietly {
         if (prefs == null || queue.isEmpty()) return
         needsFlush = true
         if (flushJob?.isActive == true) return
-        flushJob = scope.launch {
+        flushJob = scope.launch(sendFailure) {
             while (needsFlush) {
                 needsFlush = false
                 send()
@@ -183,14 +185,24 @@ class AppEventLog(
         return environment.session.user?.id
     }
 
-    private fun load(): List<Queued> {
-        val raw = prefs?.getString(KEY_QUEUE, null) ?: return emptyList()
-        return try {
-            CollogJson.decodeFromString<List<Queued>>(raw)
+    private fun load(): List<Queued> = try {
+        prefs?.getString(KEY_QUEUE, null)?.let { CollogJson.decodeFromString<List<Queued>>(it) }.orEmpty()
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    /** 기록이 실패해도 부른 쪽(통화 정리·화면 전환)은 그대로 돈다. 취소는 그대로 전달한다. */
+    private inline fun quietly(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            emptyList()
+            Log.w(TAG, "이용 기록을 남기지 못했어요", e)
         }
     }
+
+    private val sendFailure = CoroutineExceptionHandler { _, error -> Log.w(TAG, "이용 기록을 보내지 못했어요", error) }
 
     private fun save() {
         prefs?.edit()?.putString(KEY_QUEUE, CollogJson.encodeToString(queue))?.apply()
@@ -200,6 +212,7 @@ class AppEventLog(
         const val CAPACITY = 200
         const val BATCH = 50
         const val ANONYMOUS_BATCH = 20
+        private const val TAG = "AppEventLog"
         private const val PLATFORM = "ANDROID"
         private const val KEY_QUEUE = "events.queue"
         private const val KEY_APP_OPEN = "events.appOpen"
