@@ -5,6 +5,7 @@ import java.io.IOException
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -129,6 +130,87 @@ class AppEventLogTests {
 
         assertEquals(1, fixture.requests.size)
         assertEquals(List(10) { "me" }, events.queued.map { it.userId })
+    }
+
+    /** 첫 `/v1/events` 응답(200)을 [release]까지 붙잡고, 그 뒤 요청은 [laterStatus]로 바로 답한다. 다른 주소는 200. */
+    private class HeldEvents(private val laterStatus: Int = 200) {
+        val received = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val inFlight = AtomicInteger()
+        val maxInFlight = AtomicInteger()
+        private val calls = AtomicInteger()
+
+        fun reply(request: Request): Pair<Int, String> {
+            if (!request.url.encodedPath.startsWith("/v1/events")) return 200 to "{}"
+            maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), ::maxOf)
+            try {
+                if (calls.incrementAndGet() > 1) return laterStatus to "{}"
+                received.countDown()
+                release.await(5, TimeUnit.SECONDS)
+                return 200 to """{"accepted":1}"""
+            } finally {
+                inFlight.decrementAndGet()
+            }
+        }
+    }
+
+    @Test
+    fun eventsRecordedWhileSendingStayQueuedAfterTheResponse() = withEvents { fixture, events ->
+        // 붙잡은 첫 응답 뒤 요청은 서버 오류: 새 기록이 남아 있는지 본다
+        val held = HeldEvents(laterStatus = 503)
+        fixture.respond = held::reply
+        events.record(AppEvents.APP_OPEN)
+        events.record(AppEvents.REPORT_VIEW, code = AppEventCode.DIRECT, subjectId = "mom")
+
+        val sending = CoroutineScope(Dispatchers.Default).launch { events.send() }
+        assertTrue(held.received.await(5, TimeUnit.SECONDS))
+        // 응답을 기다리는 사이 새 기록이 생겼다
+        events.record(AppEvents.INCOMING_CALL_SHOWN, callId = "call-9")
+        held.release.countDown()
+        sending.join()
+
+        // 받은 두 개만 지우고, 응답을 기다리는 사이 생긴 기록은 남긴다
+        assertEquals(listOf("app_open", "report_view"), fixture.requests.first().events().map { it.text("name") })
+        assertEquals(listOf("call-9"), events.queued.map { it.event.callId })
+    }
+
+    @Test
+    fun signingOutWhileSendingLeavesNothingBehindAfterTheResponse() = withEvents { fixture, events ->
+        val held = HeldEvents()
+        fixture.respond = held::reply
+        events.record(AppEvents.APP_OPEN)
+
+        val sending = CoroutineScope(Dispatchers.Default).launch { events.send() }
+        assertTrue(held.received.await(5, TimeUnit.SECONDS))
+        fixture.environment.signOut()
+        assertTrue(events.queued.isEmpty())
+        held.release.countDown()
+        sending.join()
+
+        // 늦게 온 성공 응답이 지운 상태를 되살리지 않는다
+        assertTrue(events.queued.isEmpty())
+        assertTrue(fixture.eventPreferences.getAll().values.none { "app_open" in it.toString() })
+    }
+
+    @Test
+    fun overlappingFlushesSendOneAtATime() = withEvents { fixture, _ ->
+        val held = HeldEvents()
+        fixture.respond = held::reply
+        val events = AppEventLog(fixture.environment, MemoryPreferences(), CoroutineScope(SupervisorJob() + Dispatchers.Main))
+
+        events.record(AppEvents.APP_OPEN)
+        assertTrue(held.received.await(5, TimeUnit.SECONDS))
+        // 보내는 중에 새 기록과 앱 복귀가 겹쳤다
+        events.record(AppEvents.INCOMING_CALL_SHOWN, callId = "call-1")
+        repeat(3) { events.flush() }
+        held.release.countDown()
+
+        withContext(Dispatchers.Default) {
+            withTimeout(2_000) { while (events.queued.isNotEmpty() || fixture.requests.size < 2) delay(10) }
+            delay(100)
+        }
+        assertEquals(1, held.maxInFlight.get())
+        assertEquals(listOf(listOf("app_open"), listOf("incoming_call_shown")), fixture.requests.map { r -> r.events().map { it.text("name") } })
     }
 
     @Test

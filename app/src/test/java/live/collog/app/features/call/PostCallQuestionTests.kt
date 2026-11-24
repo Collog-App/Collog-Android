@@ -16,6 +16,7 @@ import kotlinx.coroutines.withTimeout
 import live.collog.app.TestEnvironment
 import live.collog.app.features.call.models.CallPhase
 import live.collog.app.features.call.services.CallCenter
+import live.collog.app.features.call.services.RoomDeletedException
 import live.collog.app.features.call.services.handleIncomingPush
 import live.collog.app.shared.services.AppEventCode
 import live.collog.app.shared.services.AppEvents
@@ -216,6 +217,46 @@ class PostCallQuestionTests {
         withContext(Dispatchers.Default) {
             withTimeout(2_000) { while (center.activeCall != null) delay(10) }
         }
+        assertNull(center.postCallQuestion)
+    }
+
+    @Test
+    fun callEndedBecauseTheServerDeletedTheRoomIsAsked() {
+        val connected = call()
+        start(connected)
+
+        // 상대가 끊어 서버가 LiveKit 방을 지웠다: 정상적으로 끝난 통화다
+        center.handleMediaError(RoomDeletedException(), connected.uuid)
+
+        assertNull(center.activeCall)
+        assertEquals("call-1", center.postCallQuestion?.callId)
+        assertNull(center.callError)
+    }
+
+    @Test
+    fun preparingToSignOutDropsTheQuestion() = runBlocking {
+        // 질문이 떠 있는 채 로그아웃을 시작했다
+        start(call())
+        center.finishRemoteCall()
+        center.prepareSignOut()
+        assertNull(center.postCallQuestion)
+
+        // 연결된 통화 중에 로그아웃을 시작했다: 끝난 통화를 묻지 않는다
+        start(call())
+        center.prepareSignOut()
+        assertNull(center.postCallQuestion)
+    }
+
+    @Test
+    fun switchingToAnotherAccountDropsTheQuestion() {
+        start(call())
+        center.finishRemoteCall()
+
+        fixture.environment.session.apply(
+            TokenResponse("other-token", "other-refresh", ApiUser(id = "other", role = "CHILD", name = "다른 사람", signupCompleted = true)),
+        )
+        center.sessionDidChange()
+
         assertNull(center.postCallQuestion)
     }
 
