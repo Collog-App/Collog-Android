@@ -161,7 +161,14 @@ fun RootScreen() {
     OnChange(environment.settings.callNotificationsEnabled) { _, _ -> callCenter.registerDeviceIfPossible() }
     OnChange(environment.settings.reportNotificationsEnabled) { _, _ -> callCenter.updateNotificationAuthorization() }
     OnChange(environment.settings.questionVoiceEnabled) { _, _ -> callCenter.updateQuestionVoicePreference() }
+    // 이용 기록: 가입 단계 화면에 처음 들어올 때(단계마다 설치당 한 번)
+    OnChange(authFlow.step) { previous, current ->
+        AuthFlowViewModel.onboardingStep(previous, current)?.let(environment.events::recordOnboardingStep)
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        // 이용 기록: 그날 첫 실행을 남기고, 쌓인 기록(꺼진 앱에서 받은 전화 등)을 보낸다
+        environment.events.recordAppOpen()
+        environment.events.flush()
         if (environment.session.isAuthenticated) {
             callCenter.resumePendingUploads()
             callCenter.updateNotificationAuthorization()

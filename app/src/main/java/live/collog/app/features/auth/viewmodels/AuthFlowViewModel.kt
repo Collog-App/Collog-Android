@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import live.collog.app.config.AppEnvironment
+import live.collog.app.shared.services.AppEventCode
 import live.collog.app.shared.services.api.ConsentRecordDto
 
 /**
@@ -65,6 +66,24 @@ class AuthFlowViewModel {
         } catch (error: Exception) {
             if (environment.session.user != user || environment.settings.isGuestMode) return
             step = Step.Ready
+        }
+    }
+
+    companion object {
+        /**
+         * 이용 기록 `onboarding_step` 의 단계 이름: [previous]에서 [current]로 넘어갈 때 남길 것, 없으면 null.
+         * 시작 장 = WELCOME, 온보딩(로그인) = LOGIN, 약관(분석·외부 AI 동의를 같은 화면에서 받는다) = TERMS,
+         * 회원가입 정보 = PROFILE, 나의 질환 = CONDITIONS, 가입 정보·질환을 마치고 홈에 들어옴 = DONE.
+         * PASS(꺼 둠)는 남기지 않고, 따로 된 AI 동의·초대 코드 단계는 이 앱의 가입 흐름에 없다.
+         */
+        fun onboardingStep(previous: Step, current: Step): String? = when (current) {
+            Step.Intro -> AppEventCode.WELCOME
+            Step.Onboarding -> AppEventCode.LOGIN
+            Step.Terms -> AppEventCode.TERMS
+            Step.SignUp -> AppEventCode.PROFILE
+            Step.Conditions -> AppEventCode.CONDITIONS
+            Step.Ready -> if (previous == Step.SignUp || previous == Step.Conditions) AppEventCode.DONE else null
+            Step.Launching, Step.Pass -> null
         }
     }
 }
