@@ -1,5 +1,6 @@
 package live.collog.app
 
+import android.app.KeyguardManager
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -51,13 +52,13 @@ class CallActivity : ComponentActivity() {
                 LocalCallCenter provides callCenter,
             ) {
                 val call = callCenter.activeCall
-                val endedCall = callCenter.postCallQuestion
+                val endedCall = callCenter.postCallQuestion?.takeUnless { isDeviceLocked }
                 Box(Modifier.fillMaxSize().background(Color(0xFF111316))) {
                     if (call != null) {
                         BackHandler { moveTaskToBack(true) }
                         ActiveCallScreen(callCenter, call)
                     } else if (endedCall != null) {
-                        // 여기서 보던 통화가 끝났으면 한 줄 질문도 여기서 묻는다(답하거나 닫으면 닫힌다)
+                        // 여기서 보던 통화가 잠금이 풀린 채 끝났으면 한 줄 질문도 여기서 묻는다(답하거나 닫으면 닫힌다)
                         BackHandler { callCenter.dismissPostCallQuestion() }
                         EndedCallScreen(callCenter, endedCall)
                     }
@@ -65,7 +66,8 @@ class CallActivity : ComponentActivity() {
                 }
                 LaunchedEffect(Unit) {
                     snapshotFlow {
-                        callCenter.activeCall == null && callCenter.callError == null && callCenter.postCallQuestion == null
+                        callCenter.activeCall == null && callCenter.callError == null &&
+                            (callCenter.postCallQuestion == null || isDeviceLocked)
                     }.first { it }
                     finish()
                 }
@@ -92,8 +94,17 @@ class CallActivity : ComponentActivity() {
 
     override fun onStop() {
         app.permissions.detach(this)
+        // 한 줄 질문만 남은 채 화면이 꺼지면(잠기면) 닫는다. 잠금 화면 위에 상대 이름·추천 질문을 남기지 않는다
+        if (app.callCenter.activeCall == null && app.callCenter.postCallQuestion != null) finish()
         super.onStop()
     }
+
+    /**
+     * 잠금 화면 위에서는 통화가 끝나면 예전처럼 바로 닫는다. 한 줄 질문은 CallCenter 에 남아 잠금을 푼 뒤
+     * 앱(MainActivity, 잠금 화면 위에 뜨지 않음)에서 2분 안에만 묻는다.
+     */
+    private val isDeviceLocked: Boolean
+        get() = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
 
     private fun handle(intent: Intent?) {
         val callCenter = app.callCenter
