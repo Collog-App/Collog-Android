@@ -16,6 +16,8 @@ import kotlinx.coroutines.sync.withLock
 import live.collog.app.config.AppEnvironment
 import live.collog.app.features.health.models.HealthDailyCalculator
 import live.collog.app.features.health.models.HealthRecords
+import live.collog.app.shared.services.AppEventCode
+import live.collog.app.shared.services.AppEvents
 import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.HealthDayDto
 import live.collog.app.shared.services.api.HealthLinkDocument
@@ -204,6 +206,7 @@ class HealthLink(
         val userId = userId(environment) ?: return
         if (grantedReadPermissions().isEmpty()) {
             step = HealthLinkStep.PermissionDenied
+            environment.events.record(AppEvents.HEALTH_LINK_RESULT, code = AppEventCode.PERMISSION_DENIED)
             return
         }
         val link = try {
@@ -230,9 +233,10 @@ class HealthLink(
         }
         setStatus(userId, HealthLinkStatus.Loaded(link.copy(connected = true)))
         val before = revision
-        sync(environment, force = true)
+        val synced = sync(environment, force = true)
         // 리포트는 동기화가 끝난 뒤 한 번만 다시 불러오게 한다
         if (revision == before) revision += 1
+        recordLinkResult(environment, synced)
         step = linkedStep(currentLink(userId) ?: link, justConnected = true, hasPermission = true)
     }
 
@@ -241,7 +245,11 @@ class HealthLink(
         if (step != HealthLinkStep.Regranting) return
         val userId = userId(environment) ?: return
         val granted = grantedReadPermissions().isNotEmpty()
-        if (granted) sync(environment, force = true)
+        if (granted) {
+            recordLinkResult(environment, sync(environment, force = true))
+        } else {
+            environment.events.record(AppEvents.HEALTH_LINK_RESULT, code = AppEventCode.PERMISSION_DENIED)
+        }
         val link = currentLink(userId)
         step = if (link != null) linkedStep(link, justConnected = false, hasPermission = granted) else HealthLinkStep.Failed(FAILED_TEXT)
     }
@@ -296,13 +304,13 @@ class HealthLink(
      * 지워지게 값이 하나도 없는 날도 보낸다. 다만 서버에 아직 한 번도 보낸 적이 없는데 기록이 하나도 없으면 보내지 않고,
      * 오늘 보냈다고 적지도 않는다. 건강 앱 공유를 나중에 켜도 그날 앱을 다시 열 때 보내게 하려는 것이다.
      */
-    private suspend fun sync(environment: AppEnvironment, force: Boolean): Boolean = syncMutex.withLock {
-        val userId = userId(environment) ?: return@withLock false
+    private suspend fun sync(environment: AppEnvironment, force: Boolean): SyncResult = syncMutex.withLock {
+        val userId = userId(environment) ?: return@withLock SyncResult.NotSent
         val day = today()
-        if (!force && prefs.getString(syncKey(userId), null) == day.toString()) return@withLock true
-        if (source.availability() != HealthAvailability.Available) return@withLock false
+        if (!force && prefs.getString(syncKey(userId), null) == day.toString()) return@withLock SyncResult.NotSent
+        if (source.availability() != HealthAvailability.Available) return@withLock SyncResult.NotSent
         val granted = grantedReadPermissions()
-        if (granted.isEmpty()) return@withLock false
+        if (granted.isEmpty()) return@withLock SyncResult.NotSent
 
         val days = HealthDailyCalculator.syncDays(day)
         val summaries = try {
@@ -311,15 +319,19 @@ class HealthLink(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Health Connect 기록을 읽지 못했어요", e)
-            return@withLock false
+            return@withLock SyncResult.NotSent
         }
-        if (summaries.none { it.hasAnyValue } && currentLink(userId)?.lastSyncedDay == null) return@withLock true
+        val sent = if (summaries.any { it.hasAnyValue }) SyncResult.Uploaded else SyncResult.NoRecords
+        if (sent == SyncResult.NoRecords && currentLink(userId)?.lastSyncedDay == null) return@withLock sent
 
-        var failure = upload(environment, userId, day, summaries) ?: return@withLock true
+        var failure = upload(environment, userId, day, summaries) ?: return@withLock sent
         if (failure is ApiError.Server && failure.status == 422) {
             // 서버가 오늘 날짜를 아직 받지 않을 수 있다. 오늘을 빼고 한 번만 다시 보낸다
             val earlier = summaries.filter { it.date != day.toString() }
-            if (earlier.isNotEmpty()) failure = upload(environment, userId, day, earlier) ?: return@withLock true
+            if (earlier.isNotEmpty()) {
+                failure = upload(environment, userId, day, earlier)
+                    ?: return@withLock if (earlier.any { it.hasAnyValue }) SyncResult.Uploaded else SyncResult.NoRecords
+            }
         }
         when {
             failure.isUnsupported -> setStatus(userId, HealthLinkStatus.Unsupported)
@@ -328,7 +340,23 @@ class HealthLink(
         }
         // 서버가 받지 않은 요청(4xx)은 같은 날 다시 보내지 않는다. 연결·서버 오류는 다음에 앞으로 올 때 다시.
         if (failure is ApiError.Server && failure.status in 400..499) markSynced(userId, day)
-        false
+        SyncResult.NotSent
+    }
+
+    /** 동기화 결과. 값이 하나도 없는 날만 올렸거나 올릴 것이 없었으면 [NoRecords]. */
+    private enum class SyncResult { Uploaded, NoRecords, NotSent }
+
+    /**
+     * 이용 기록 `health_link_result`(연결하거나 연결된 뒤 권한을 다시 받은 시도): 기록이 올라갔는지, 연결됐지만 올릴 기록이
+     * 없는지(삼성 헬스가 Health Connect 에 쓰지 않는 경우 등). 읽기·올리기가 실패한 시도는 맞는 code 가 없어 남기지 않는다.
+     */
+    private fun recordLinkResult(environment: AppEnvironment, synced: SyncResult) {
+        val code = when (synced) {
+            SyncResult.Uploaded -> AppEventCode.CONNECTED
+            SyncResult.NoRecords -> AppEventCode.CONNECTED_NO_RECORDS
+            SyncResult.NotSent -> return
+        }
+        environment.events.record(AppEvents.HEALTH_LINK_RESULT, code = code)
     }
 
     /** 올리고 성공하면 null, 실패하면 그 오류. */

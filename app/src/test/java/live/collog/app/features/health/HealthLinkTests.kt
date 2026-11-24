@@ -18,6 +18,7 @@ import live.collog.app.features.health.services.HealthLink
 import live.collog.app.features.health.services.HealthLinkStatus
 import live.collog.app.features.health.services.HealthLinkStep
 import live.collog.app.features.health.services.HealthRecordSource
+import live.collog.app.shared.services.AppEvents
 import okhttp3.Request
 import okio.Buffer
 import org.junit.Assert.assertEquals
@@ -55,8 +56,11 @@ class HealthLinkTests {
         """{"connected":$connected,"consentVersion":null,"connectedAt":null,"document":$doc,
             "lastSyncedDay":${lastSyncedDay?.let { "\"$it\"" } ?: "null"}}"""
 
-    private fun withLink(body: suspend (TestEnvironment, HealthLink, FakeHealthSource, () -> LocalDate) -> Unit) = runTest {
-        val fixture = TestEnvironment()
+    private fun withLink(
+        recordsEvents: Boolean = false,
+        body: suspend (TestEnvironment, HealthLink, FakeHealthSource, () -> LocalDate) -> Unit,
+    ) = runTest {
+        val fixture = TestEnvironment(recordsEvents = recordsEvents)
         val source = FakeHealthSource()
         var day = today
         val link = HealthLink(source, MemoryPreferences(), today = { day }, now = { clock })
@@ -76,6 +80,78 @@ class HealthLinkTests {
     private fun Request.dates(): List<String> = json()["days"]!!.jsonArray.map { it.jsonObject["date"]!!.jsonPrimitive.content }
 
     private fun TestEnvironment.puts(): List<Request> = requests.filter { it.method == "PUT" }
+
+    /** 이용 기록 `health_link_result` 의 code 들. */
+    private fun TestEnvironment.linkResults(): List<String?> =
+        environment.events.queued.map { it.event }.filter { it.name == AppEvents.HEALTH_LINK_RESULT }.map { it.code }
+
+    private suspend fun connect(fixture: TestEnvironment, link: HealthLink, put: Pair<Int, String>) {
+        fixture.respond = { request ->
+            when (request.method) {
+                "GET" -> 200 to status(connected = false)
+                "POST" -> 200 to status(connected = true)
+                "PUT" -> put
+                else -> 500 to "{}"
+            }
+        }
+        link.prepare(fixture.environment)
+        link.beginConnect((link.step as HealthLinkStep.Consent).document)
+        link.completeConnect(fixture.environment)
+    }
+
+    @Test
+    fun connectingWithRecordsIsRecordedAsConnected() = withLink(recordsEvents = true) { fixture, link, source, _ ->
+        source.records = HealthRecords(stepsByDay = mapOf(today to 3210L))
+        connect(fixture, link, 200 to """{"saved":14,"lastSyncedDay":"2026-11-08"}""")
+        assertEquals(listOf("CONNECTED"), fixture.linkResults())
+    }
+
+    @Test
+    fun connectingWithoutAnyRecordIsRecordedAsConnectedNoRecords() = withLink(recordsEvents = true) { fixture, link, source, _ ->
+        // 삼성 헬스가 Health Connect 에 쓰지 않으면 권한은 받아도 읽을 기록이 없다
+        source.records = HealthRecords()
+        connect(fixture, link, 200 to "{}")
+        assertTrue(fixture.puts().isEmpty())
+        assertEquals(listOf("CONNECTED_NO_RECORDS"), fixture.linkResults())
+    }
+
+    @Test
+    fun refusingEveryPermissionIsRecordedAsPermissionDenied() = withLink(recordsEvents = true) { fixture, link, source, _ ->
+        source.granted = emptySet()
+        connect(fixture, link, 200 to "{}")
+        assertEquals(HealthLinkStep.PermissionDenied, link.step)
+        assertEquals(listOf("PERMISSION_DENIED"), fixture.linkResults())
+    }
+
+    @Test
+    fun regrantingAfterConnectingIsRecordedToo() = withLink(recordsEvents = true) { fixture, link, source, _ ->
+        source.granted = emptySet()
+        source.records = HealthRecords(stepsByDay = mapOf(today to 100L))
+        fixture.respond = { request ->
+            if (request.method == "PUT") 200 to """{"saved":14,"lastSyncedDay":"2026-11-08"}""" else 200 to status(connected = true)
+        }
+        link.prepare(fixture.environment)
+
+        // 권한 창에서 또 허용하지 않았다
+        link.beginRegrant()
+        link.completeRegrant(fixture.environment)
+        // 이번에는 허용했다
+        source.granted = setOf(HealthLink.READ_STEPS)
+        link.beginRegrant()
+        link.completeRegrant(fixture.environment)
+
+        assertEquals(listOf("PERMISSION_DENIED", "CONNECTED"), fixture.linkResults())
+    }
+
+    @Test
+    fun uploadFailureAfterConnectingRecordsNoResult() = withLink(recordsEvents = true) { fixture, link, source, _ ->
+        source.records = HealthRecords(stepsByDay = mapOf(today to 3210L))
+        connect(fixture, link, 503 to "{}")
+        assertTrue(fixture.linkResults().isEmpty())
+        // 연결 확인·앱이 앞으로 올 때 동기화는 결과로 남기지 않는다
+        link.syncIfDue(fixture.environment)
+        assertTrue(fixture.linkResults().isEmpty())
+    }
 
     @Test
     fun serverWithoutHealthApiIsQuietlyNotReady() = withLink { fixture, link, _, _ ->
