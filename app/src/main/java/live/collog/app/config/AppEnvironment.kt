@@ -33,6 +33,8 @@ class AppEnvironment(
     var afterSignOut: (suspend () -> Unit)? = null
     /** 이용 기록. [eventPreferences]가 없으면(단위 테스트 기본값) 남기지 않는다. */
     val events = AppEventLog(this, eventPreferences, eventScope)
+    /** 리포트 알림을 눌러 리포트 탭을 열었다. 리포트 화면이 `report_view` 를 NOTIFICATION 으로 남기고 내린다. */
+    var reportOpenedFromNotification = false
     var reportNotificationRevision by mutableIntStateOf(0)
     /** 분석 완료 알림을 받을 때마다(누르지 않아도) 오른다. 리포트 화면이 이미 불러 둔 주를 다시 읽는다. */
     var reportDataRevision by mutableIntStateOf(0)
@@ -86,6 +88,7 @@ class AppEnvironment(
         reportDataRevision += 1
         if (openReport) {
             openedReportCallId = callId
+            reportOpenedFromNotification = true
             reportNotificationRevision += 1
         }
     }

@@ -71,6 +71,7 @@ import live.collog.app.shared.components.navbar.CollapsingHeaderScrollView
 import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.navigation.LocalTabManager
 import live.collog.app.shared.navigation.MainTab
+import live.collog.app.shared.services.AppEventCode
 import live.collog.app.shared.ui.Haptics
 import live.collog.app.shared.ui.OnChange
 import live.collog.app.shared.ui.designsystem.CollogColors
@@ -157,6 +158,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
         if (contact.id == viewModel.selectedContactId) return
         Haptics.focus()
         viewModel.selectMember(contact)
+        viewModel.recordReportView(environment, AppEventCode.DIRECT)
         scope.launch { pagerState.scrollToPage(currentOffsetPage) }
         pageHeights.clear()
         activeVerticalWeek = 0
@@ -177,7 +179,16 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
         viewModel.setWeek(active)
     }
 
-    LaunchedEffect(Unit) { viewModel.refresh(environment) }
+    LaunchedEffect(Unit) {
+        // 이용 기록: 리포트 탭에 들어온 순간(알림을 눌러 열었으면 NOTIFICATION)
+        if (tab == MainTab.Report) {
+            val code = if (environment.reportOpenedFromNotification) AppEventCode.NOTIFICATION else AppEventCode.DIRECT
+            environment.reportOpenedFromNotification = false
+            viewModel.recordReportView(environment, code)
+        }
+        viewModel.refresh(environment)
+    }
+    OnChange(environment.family.isLoaded) { _, _ -> viewModel.recordPendingReportView(environment) }
     // 앱으로 돌아왔을 때: 그사이 가족이 공유를 껐으면 보이던 기록을 남겨 두지 않는다(처음 들어올 때도 불리지만 아직 로드 전이라 건너뛴다)
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { scope.launch { viewModel.revalidateSharing(environment) } }
     // 내 건강 앱을 연결·동기화·끊으면 내 리포트의 「생활 기록」을 다시 불러온다

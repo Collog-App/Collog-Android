@@ -19,6 +19,7 @@ import live.collog.app.features.timeline.models.TimelineWeekPage
 import live.collog.app.features.timeline.models.WeekBounds
 import live.collog.app.features.timeline.models.WeeklySpeechHistory
 import live.collog.app.features.timeline.models.fromBundle
+import live.collog.app.shared.services.AppEvents
 import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.BaselineDto
 import live.collog.app.shared.services.api.CallSummaryDto
@@ -41,6 +42,9 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
 
     /** 칩에서 "나"를 직접 골랐는지. 가족이 없어 대신 고른 "나"는 가족 목록이 오면 첫 가족으로 돌아간다. */
     private var pickedSelf = false
+
+    /** 리포트에 들어왔지만 볼 사람이 아직 정해지지 않아 남기지 못한 `report_view` 의 code. */
+    private var pendingReportView: String? = null
 
     private val baselineCache = mutableMapOf<String, Map<String, BaselineDto>>()
     private val historyCache = mutableMapOf<String, WeeklySpeechHistory>()
@@ -75,6 +79,25 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         pages = emptyMap()
         loading.clear()
         contentGeneration += 1
+    }
+
+    /**
+     * 이용 기록 `report_view`: 사람이 리포트 화면에 들어왔거나 보는 사람을 바꿨다([code] = DIRECT·NOTIFICATION).
+     * 자동 새로 고침·주 넘기기·당겨서 새로 고침은 부르지 않는다. 타임라인 탭은 남기지 않는다.
+     */
+    fun recordReportView(environment: AppEnvironment, code: String) {
+        if (selectedTabIndex != 0) return
+        pendingReportView = code
+        recordPendingReportView(environment)
+    }
+
+    /** 가족 목록을 받기 전에 잠깐 고른 "나"로 남기지 않게, 목록을 받은 뒤(가족이 없으면 바로) 보고 있는 사람으로 남긴다. */
+    fun recordPendingReportView(environment: AppEnvironment) {
+        val code = pendingReportView ?: return
+        if (!environment.family.isLoaded) return
+        val subjectId = selectedContact(environment)?.userId ?: return
+        pendingReportView = null
+        environment.events.record(AppEvents.REPORT_VIEW, code = code, subjectId = subjectId)
     }
 
     suspend fun refresh(environment: AppEnvironment, forceReload: Boolean = false) {
