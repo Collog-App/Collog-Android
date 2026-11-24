@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
+import live.collog.app.shared.services.AppEventCode
 import live.collog.app.shared.services.AppEventLog
 import live.collog.app.shared.services.AuthSession
 import live.collog.app.shared.services.FamilyStore
@@ -33,8 +34,8 @@ class AppEnvironment(
     var afterSignOut: (suspend () -> Unit)? = null
     /** 이용 기록. [eventPreferences]가 없으면(단위 테스트 기본값) 남기지 않는다. */
     val events = AppEventLog(this, eventPreferences, eventScope)
-    /** 리포트 알림을 눌러 리포트 탭을 열었다. 리포트 화면이 `report_view` 를 NOTIFICATION 으로 남기고 내린다. */
-    var reportOpenedFromNotification = false
+    /** 리포트 푸시 알림을 누른 시각. 리포트 화면이 [takeReportViewSource]로 한 번 쓰고 지운다. */
+    private var reportNotificationTappedAtMillis: Long? = null
     var reportNotificationRevision by mutableIntStateOf(0)
     /** 분석 완료 알림을 받을 때마다(누르지 않아도) 오른다. 리포트 화면이 이미 불러 둔 주를 다시 읽는다. */
     var reportDataRevision by mutableIntStateOf(0)
@@ -79,6 +80,20 @@ class AppEnvironment(
         }
     }
 
+    /**
+     * 리포트 화면에 들어올 때 부른다: 방금(10초 안) 리포트 푸시 알림을 눌러 열었으면 NOTIFICATION, 아니면 DIRECT.
+     * 한 번 쓰면 지워, 남아 있던 표시가 나중의 일반 열람에 붙지 않는다.
+     */
+    fun takeReportViewSource(nowMillis: Long = System.currentTimeMillis()): String {
+        val tappedAt = reportNotificationTappedAtMillis
+        reportNotificationTappedAtMillis = null
+        return if (tappedAt != null && nowMillis - tappedAt <= REPORT_NOTIFICATION_WINDOW_MILLIS) {
+            AppEventCode.NOTIFICATION
+        } else {
+            AppEventCode.DIRECT
+        }
+    }
+
     fun receiveReportNotification(callId: String, title: String, message: String, openReport: Boolean) {
         if (!session.isAuthenticated) return
         if (reportNotifications.none { it.id == callId }) {
@@ -88,7 +103,7 @@ class AppEnvironment(
         reportDataRevision += 1
         if (openReport) {
             openedReportCallId = callId
-            reportOpenedFromNotification = true
+            reportNotificationTappedAtMillis = System.currentTimeMillis()
             reportNotificationRevision += 1
         }
     }
@@ -100,6 +115,9 @@ data class ReceivedReportNotification(
     val message: String,
     val date: Instant,
 )
+
+/** 리포트 푸시 알림을 누른 뒤 리포트 화면이 들어오기까지 기다리는 시간. 넘으면 알림으로 들어온 것으로 보지 않는다. */
+private const val REPORT_NOTIFICATION_WINDOW_MILLIS = 10_000L
 
 val LocalAppEnvironment = staticCompositionLocalOf<AppEnvironment> {
     error("AppEnvironment가 제공되지 않았어요")

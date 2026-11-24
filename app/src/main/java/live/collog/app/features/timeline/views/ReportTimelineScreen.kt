@@ -181,11 +181,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
 
     LaunchedEffect(Unit) {
         // 이용 기록: 리포트 탭에 들어온 순간(알림을 눌러 열었으면 NOTIFICATION)
-        if (tab == MainTab.Report) {
-            val code = if (environment.reportOpenedFromNotification) AppEventCode.NOTIFICATION else AppEventCode.DIRECT
-            environment.reportOpenedFromNotification = false
-            viewModel.recordReportView(environment, code)
-        }
+        if (tab == MainTab.Report) viewModel.recordReportView(environment, environment.takeReportViewSource())
         viewModel.refresh(environment)
     }
     OnChange(environment.family.isLoaded) { _, _ -> viewModel.recordPendingReportView(environment) }

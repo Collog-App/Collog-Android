@@ -10,7 +10,6 @@ import live.collog.app.shared.services.AppEvents
 import live.collog.app.shared.services.api.AppEventDto
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -135,12 +134,39 @@ class ReportViewEventTests {
     }
 
     @Test
-    fun onlyATappedReportNotificationMarksTheEntryAsNotification() = withFixture { fixture ->
+    fun onlyATappedReportNotificationMarksTheNextEntryAsNotification() = withFixture { fixture ->
         val environment = fixture.environment
+        // 배너로만 받은 알림은 열람 경로가 아니다
         environment.receiveReportNotification("call-1", "Collog", "새 통화 기록", openReport = false)
-        assertFalse(environment.reportOpenedFromNotification)
+        assertEquals("DIRECT", environment.takeReportViewSource())
 
         environment.receiveReportNotification("call-2", "Collog", "새 통화 기록", openReport = true)
-        assertTrue(environment.reportOpenedFromNotification)
+        assertEquals("NOTIFICATION", environment.takeReportViewSource())
+        // 한 번 쓰면 지워 다음 열람에 붙지 않는다
+        assertEquals("DIRECT", environment.takeReportViewSource())
+    }
+
+    @Test
+    fun aNotificationMarkLeftUnusedForTenSecondsIsDropped() = withFixture { fixture ->
+        val environment = fixture.environment
+        environment.receiveReportNotification("call-1", "Collog", "새 통화 기록", openReport = true)
+
+        // 알림을 누른 뒤 리포트 화면이 10초 넘게 들어오지 않았다(가입 단계에 머묾 등)
+        assertEquals("DIRECT", environment.takeReportViewSource(System.currentTimeMillis() + 10_001))
+    }
+
+    @Test
+    fun switchingPeopleBeforeTheFamilyLoadsKeepsThePendingNotificationEntry() = withFixture { fixture ->
+        val environment = fixture.environment
+        val model = TimelineViewModel(selectedTabIndex = 0)
+        model.recordReportView(environment, AppEventCode.NOTIFICATION)
+        model.selectMember(model.subjects(environment).single())
+        model.recordReportView(environment, AppEventCode.DIRECT)
+        assertTrue(fixture.views().isEmpty())
+
+        environment.family.refresh(environment)
+        model.recordPendingReportView(environment)
+
+        assertEquals(listOf("NOTIFICATION"), fixture.views().map { it.code })
     }
 }

@@ -19,6 +19,7 @@ import live.collog.app.features.timeline.models.TimelineWeekPage
 import live.collog.app.features.timeline.models.WeekBounds
 import live.collog.app.features.timeline.models.WeeklySpeechHistory
 import live.collog.app.features.timeline.models.fromBundle
+import live.collog.app.shared.services.AppEventCode
 import live.collog.app.shared.services.AppEvents
 import live.collog.app.shared.services.api.ApiError
 import live.collog.app.shared.services.api.BaselineDto
@@ -87,7 +88,8 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
      */
     fun recordReportView(environment: AppEnvironment, code: String) {
         if (selectedTabIndex != 0) return
-        pendingReportView = code
+        // 가족 목록을 기다리는 알림 열람(NOTIFICATION)은 그사이 사람을 바꿔도 DIRECT 로 덮지 않는다
+        pendingReportView = if (pendingReportView == AppEventCode.NOTIFICATION) AppEventCode.NOTIFICATION else code
         recordPendingReportView(environment)
     }
 
