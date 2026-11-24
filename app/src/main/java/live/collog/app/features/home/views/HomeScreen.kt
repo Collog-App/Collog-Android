@@ -196,7 +196,11 @@ private fun HomeRoot(viewModel: HomeViewModel) {
     // 분석 완료 알림을 받으면(누르지 않고 배너로만 봐도) 건강 요약을 다시 읽는다
     OnChange(environment.reportDataRevision) { _, _ -> scope.launch { refresh() } }
     // 처음 보일 때와 앱으로 돌아올 때마다 불러와 새 날의 추천이 나오게 한다
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { scope.launch { todoViewModel.load(environment) } }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        scope.launch { todoViewModel.load(environment) }
+        // 그사이 가족이 공유를 껐거나 다시 켰으면 보이던 기록을 그대로 두지 않는다(처음 들어올 때는 첫 읽기와 겹치지 않게 뷰모델이 로드 전이면 건너뛴다)
+        scope.launch { viewModel.revalidateSharing(environment, environment.family.selectedContact) }
+    }
     OnChange(tabManager.reselectionCount) { _, _ -> scrollState.animateScrollTo(0, tween(320)) }
 
     // 할 일 입력칸이 키보드에 가리지 않게 스크롤 영역을 키보드 위로 줄인다(edge-to-edge 라 직접 반영).

@@ -42,6 +42,8 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import live.collog.app.config.LocalAppEnvironment
@@ -176,6 +178,8 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
     }
 
     LaunchedEffect(Unit) { viewModel.refresh(environment) }
+    // 앱으로 돌아왔을 때: 그사이 가족이 공유를 껐으면 보이던 기록을 남겨 두지 않는다(처음 들어올 때도 불리지만 아직 로드 전이라 건너뛴다)
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { scope.launch { viewModel.revalidateSharing(environment) } }
     // 내 건강 앱을 연결·동기화·끊으면 내 리포트의 「생활 기록」을 다시 불러온다
     OnChange(healthLink.revision) { _, _ ->
         if (tab == MainTab.Report && viewModel.selectedContactId == TimelineViewModel.SelfContactId) {

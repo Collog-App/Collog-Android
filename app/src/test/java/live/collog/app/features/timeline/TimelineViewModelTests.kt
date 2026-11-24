@@ -354,6 +354,76 @@ class TimelineViewModelTests {
         assertEquals(1, model.page(-1).entries.size)
     }
 
+    private val forbiddenBody = 403 to """{"code":"FORBIDDEN","message":"열람 권한이 없는 항목입니다"}"""
+
+    @Test
+    fun revalidatingDropsEveryLoadedWeekOnceSharingIsTurnedOff() = withFixture { fixture ->
+        serve(fixture)
+        val base = fixture.respond
+        var shared = true
+        fixture.respond = { request ->
+            val path = request.path()
+            if (!shared && (path.endsWith("/reports") || path.endsWith("/calls"))) forbiddenBody else base(request)
+        }
+        val model = TimelineViewModel()
+        model.refresh(fixture.environment)
+        assertEquals(setOf(0, -1), model.pages.keys)
+        assertFalse(model.page(0).reportNotShared)
+        assertFalse(model.page(-1).reportNotShared)
+
+        shared = false
+        model.revalidateSharing(fixture.environment)
+
+        // 공유는 주마다가 아니라 사람마다 끄므로, 불러 둔 다른 주도 남지 않는다
+        for (offset in listOf(0, -1)) {
+            val page = model.page(offset)
+            assertTrue(page.isLoaded)
+            assertTrue(page.reportNotShared)
+            assertTrue(page.timelineNotShared)
+            assertTrue(page.entries.isEmpty())
+        }
+    }
+
+    @Test
+    fun revalidatingAsksQuietlyOnceAndKeepsWeeksWhenNothingChanged() = withFixture { fixture ->
+        serve(fixture)
+        val model = TimelineViewModel()
+        model.refresh(fixture.environment)
+        val pagesBefore = model.pages
+        val reportsBefore = fixture.paths.count { it.endsWith("/reports") }
+
+        model.revalidateSharing(fixture.environment)
+
+        // 지금 주의 리포트를 한 번 물었을 뿐, 주를 다시 읽지 않는다
+        assertEquals(reportsBefore + 1, fixture.paths.count { it.endsWith("/reports") })
+        assertEquals(pagesBefore, model.pages)
+    }
+
+    @Test
+    fun revalidatingKeepsTheWeeksOnAnotherFailure() = withFixture { fixture ->
+        serve(fixture)
+        val base = fixture.respond
+        var failing = false
+        fixture.respond = { request ->
+            val path = request.path()
+            if (failing && (path.endsWith("/reports") || path.endsWith("/calls"))) {
+                503 to """{"code":"ERROR","message":"잠시 후 다시 시도해주세요"}"""
+            } else {
+                base(request)
+            }
+        }
+        val model = TimelineViewModel()
+        model.refresh(fixture.environment)
+        val pagesBefore = model.pages
+
+        failing = true
+        model.revalidateSharing(fixture.environment)
+
+        assertEquals(pagesBefore, model.pages)
+        assertFalse(model.page(0).reportNotShared)
+        assertNull(model.page(0).reportError)
+    }
+
     @Test
     fun otherServerErrorsStayLoadFailures() = withFixture { fixture ->
         serve(fixture, reportStatus = 503)

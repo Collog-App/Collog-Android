@@ -148,6 +148,130 @@ class HomeSummaryTests {
         }
     }
 
+    private val openCalls = 200 to
+        """{"calls":[{"callId":"c1","parentId":"mom","state":"ANALYZED","startedAt":"2026-11-05T03:00:00Z","durationSec":120,"recorded":true}]}"""
+    private val openReport = 200 to
+        """
+        {"parentId":"mom","period":"WEEKLY","from":"2026-09-07","to":"2026-09-13",
+        "state":"BASELINE_COLLECTING","disclaimer":"","promotedSignals":[],"acuteSignals":[],
+        "conversationItems":{"activity":["산책했다고 이야기했어요."]},
+        "repeatObservation":{"count":0,"callsWithRepeat":0,"label":""},
+        "acousticTrends":[],"analyzedCallCount":1}
+        """.trimIndent()
+
+    private fun serveHome(fixture: TestEnvironment, calls: Pair<Int, String>, report: Pair<Int, String>) {
+        fixture.respond = { request ->
+            when (request.url.encodedPath) {
+                "/v1/parents/mom/calls" -> calls
+                "/v1/parents/mom/baseline" -> 200 to """{"baselines":[]}"""
+                "/v1/parents/mom/reports" -> report
+                else -> error("Unexpected home request ${request.url.encodedPath}")
+            }
+        }
+    }
+
+    @Test
+    fun homeDropsWhatItShowedOnceSharingIsTurnedOff() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            serveHome(fixture, openCalls, openReport)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+            assertNotNull(model.healthSummary)
+            assertEquals(1, model.recentCalls.size)
+
+            serveHome(fixture, forbidden, forbidden)
+            model.revalidateSharing(fixture.environment, contact = mom)
+
+            assertTrue(model.reportNotShared)
+            assertTrue(model.callsNotShared)
+            assertNull(model.healthSummary)
+            assertNull(model.healthFeedback)
+            assertTrue(model.recentCalls.isEmpty())
+            assertTrue(model.isLoaded)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun homeDropsTheSummaryWhenOnlyTheReportIsTurnedOff() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            serveHome(fixture, openCalls, openReport)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+            assertNotNull(model.healthSummary)
+
+            serveHome(fixture, openCalls, forbidden)
+            model.revalidateSharing(fixture.environment, contact = mom)
+
+            assertTrue(model.reportNotShared)
+            assertNull(model.healthSummary)
+            // 통화 기록은 따로 공유한다
+            assertFalse(model.callsNotShared)
+            assertEquals(1, model.recentCalls.size)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun homeReadsAgainOnceSharingIsTurnedBackOn() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            serveHome(fixture, forbidden, forbidden)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+            assertTrue(model.reportNotShared)
+
+            serveHome(fixture, openCalls, openReport)
+            model.revalidateSharing(fixture.environment, contact = mom)
+
+            assertFalse(model.reportNotShared)
+            assertFalse(model.callsNotShared)
+            assertNotNull(model.healthSummary)
+            assertEquals(1, model.recentCalls.size)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun homeKeepsTheScreenWhenTheQuietCheckFailsForAnotherReason() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            serveHome(fixture, openCalls, openReport)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+
+            val failure = 503 to """{"code":"ERROR","message":"잠시 후 다시 시도해주세요"}"""
+            serveHome(fixture, failure, failure)
+            model.revalidateSharing(fixture.environment, contact = mom)
+
+            assertNotNull(model.healthSummary)
+            assertEquals(1, model.recentCalls.size)
+            assertFalse(model.reportNotShared)
+            assertFalse(model.callsNotShared)
+            assertNull(model.loadError)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun homeDoesNotCheckBeforeTheFirstLoad() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            serveHome(fixture, forbidden, forbidden)
+            val model = HomeViewModel()
+            model.revalidateSharing(fixture.environment, contact = mom)
+            assertTrue(fixture.paths.isEmpty())
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
     @Test
     fun onlyTheCallListBlockedKeepsTheReport() = runTest {
         val fixture = TestEnvironment()

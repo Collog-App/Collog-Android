@@ -47,6 +47,9 @@ class HomeViewModel {
 
     private var generation = UUID.randomUUID()
 
+    /** 첫 읽기가 한 번 끝났는가. `isLoaded` 는 처음부터 true 라 이 값으로 「아직 안 읽음」을 가른다. */
+    private var hasLoaded = false
+
     suspend fun refresh(environment: AppEnvironment, contact: FamilyContact?) {
         val generation = UUID.randomUUID()
         this.generation = generation
@@ -54,8 +57,35 @@ class HomeViewModel {
         try {
             load(environment, contact, generation)
         } finally {
-            if (this.generation == generation) isLoaded = true
+            if (this.generation == generation) {
+                isLoaded = true
+                hasLoaded = true
+            }
         }
+    }
+
+    /**
+     * 앱으로 돌아왔을 때: 화면을 비우지 않고 리포트·통화 목록이 열리는지만 조용히 묻는다.
+     * 그사이 가족이 공유를 껐거나 다시 켰으면(보이는 상태와 달라졌으면) 전체를 다시 읽는다. 403 이 아닌 실패는 그대로 둔다.
+     */
+    suspend fun revalidateSharing(environment: AppEnvironment, contact: FamilyContact?) {
+        if (environment.settings.isGuestMode || !environment.session.isAuthenticated || !hasLoaded || !isLoaded) return
+        val parentId = contact?.userId ?: return
+        val generation = this.generation
+        val api = environment.api
+
+        val calls = ApiError.accessCheck { api.calls(parentId) } ?: return
+        if (this.generation != generation) return
+        if (calls.first != callsNotShared) {
+            refresh(environment, contact)
+            return
+        }
+
+        // 리포트 공유는 통화 기록과 따로 켜고 끈다. 못 불러와 비어 있는 화면은 비교할 기준이 없다
+        if (healthSummary == null && !reportNotShared) return
+        val report = ApiError.accessCheck { api.report(parentId) } ?: return
+        if (this.generation != generation) return
+        if (report.first != reportNotShared) refresh(environment, contact)
     }
 
     private suspend fun load(environment: AppEnvironment, contact: FamilyContact?, generation: UUID) {

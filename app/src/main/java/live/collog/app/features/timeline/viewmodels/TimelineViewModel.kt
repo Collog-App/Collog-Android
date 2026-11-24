@@ -105,6 +105,40 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         }
     }
 
+    /**
+     * 앱으로 돌아왔을 때: 그사이 가족이 공유를 껐거나 다시 켰으면 불러 둔 주를 모두 버리고 다시 읽는다(공유는 주마다가 아니라 사람마다 꺼진다).
+     * 바뀌지 않았으면 화면을 건드리지 않게, 지금 주의 리포트와 통화 목록이 열리는지만 조용히 묻는다.
+     */
+    suspend fun revalidateSharing(environment: AppEnvironment) {
+        if (environment.settings.isGuestMode) return
+        val contact = selectedContact(environment)
+        val parentId = contact?.userId ?: return
+        if (contact.id == SelfContactId) return
+        val offset = weekOffset
+        val page = pages[offset]?.takeIf { it.isLoaded } ?: return
+        val generation = contentGeneration
+        val api = environment.api
+        val bounds = TimelineWeekPage.bounds(offset)
+
+        val report = ApiError.accessCheck { api.report(parentId, date = TimelineWeekPage.isoDate.format(bounds.anchor)) }
+        val calls = ApiError.accessCheck {
+            api.calls(
+                parentId,
+                from = TimelineWeekPage.isoDate.format(bounds.start),
+                to = TimelineWeekPage.isoDate.format(bounds.end),
+            )
+        }
+        if (generation != contentGeneration) return
+        val reportChanged = report != null && report.first != page.reportNotShared
+        val timelineChanged = calls != null && calls.first != page.timelineNotShared
+        if (!reportChanged && !timelineChanged) return
+
+        pages = emptyMap()
+        loading.clear()
+        contentGeneration += 1
+        refresh(environment)
+    }
+
     suspend fun loadPage(offset: Int, environment: AppEnvironment, forceReload: Boolean = false) {
         resolveSelection(environment)
         val generation = contentGeneration
