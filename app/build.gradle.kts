@@ -17,7 +17,7 @@ android {
         applicationId = "live.collog.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 43
+        versionCode = 44
         versionName = "1.2"
 
         buildConfigField("String", "API_BASE_URL", "\"https://api.collog.live\"")
