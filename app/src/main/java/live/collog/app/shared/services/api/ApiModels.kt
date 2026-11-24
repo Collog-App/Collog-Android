@@ -280,3 +280,22 @@ data class InvitationCreateBody(val name: String, val relation: String)
 
 @Serializable
 data class InvitationAcceptBody(val code: String)
+
+/** 이용 기록 한 건(`POST /v1/events`, 약속 = `private/events_contract.md`). 쓰지 않는 칸은 보내지 않는다. */
+@Serializable
+data class AppEventDto(
+    /** 앱이 만드는 소문자 UUID. 서버는 같은 id 를 한 번만 남긴다. */
+    val id: String,
+    val name: String,
+    /** 일이 일어난 시각(UTC ISO 8601). */
+    val at: String,
+    val platform: String,
+    /** 「버전 (빌드)」 */
+    val appVersion: String,
+    val code: String? = null,
+    val subjectId: String? = null,
+    val callId: String? = null,
+)
+
+@Serializable
+data class AppEventsBody(val events: List<AppEventDto>)

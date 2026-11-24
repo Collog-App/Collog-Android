@@ -1,13 +1,18 @@
 package live.collog.app.config
 
+import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import java.time.Instant
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
+import live.collog.app.shared.services.AppEventLog
 import live.collog.app.shared.services.AuthSession
 import live.collog.app.shared.services.FamilyStore
 import live.collog.app.shared.services.api.CollogApi
@@ -20,10 +25,14 @@ class AppEnvironment(
     val session: AuthSession,
     val family: FamilyStore = FamilyStore(),
     private val http: OkHttpClient = CollogApiClient.DefaultHttp,
+    eventPreferences: SharedPreferences? = null,
+    eventScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
     var beforeSignOut: (suspend () -> Unit)? = null
     /** 로그아웃·탈퇴 뒤 Google 로그인 상태를 지우고 건강 앱 권한을 거둔다(CollogApplication이 넣는다). */
     var afterSignOut: (suspend () -> Unit)? = null
+    /** 이용 기록. [eventPreferences]가 없으면(단위 테스트 기본값) 남기지 않는다. */
+    val events = AppEventLog(this, eventPreferences, eventScope)
     var reportNotificationRevision by mutableIntStateOf(0)
     /** 분석 완료 알림을 받을 때마다(누르지 않아도) 오른다. 리포트 화면이 이미 불러 둔 주를 다시 읽는다. */
     var reportDataRevision by mutableIntStateOf(0)
@@ -59,6 +68,7 @@ class AppEnvironment(
         val refreshToken = session.refreshToken
         val api = api
         session.signOut()
+        events.clear()
         // 로그아웃하면 부른 화면이 사라져 그 범위가 취소된다. 서버 로그아웃과 Google 정리는 끝까지 한다
         // (iOS는 화면과 상관없는 Task에서 돈다).
         withContext(NonCancellable) {

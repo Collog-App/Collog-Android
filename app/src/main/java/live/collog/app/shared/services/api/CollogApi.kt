@@ -366,6 +366,26 @@ class CollogApi(val client: CollogApiClient) {
             ),
         )
 
+    /** 이용 기록 묶음(50개까지). 서버는 모르는 이름·코드는 버리고 나머지만 받는다(200). */
+    suspend fun sendEvents(events: List<AppEventDto>) {
+        client.sendRaw(
+            ApiEndpoint(path = "/v1/events", method = HttpMethod.POST, body = body(AppEventsBody(events)), timeoutSeconds = 15),
+        )
+    }
+
+    /** 로그인 전 이용 기록(`onboarding_step` 만, 20개까지). 인증 없이 보낸다. */
+    suspend fun sendAnonymousEvents(events: List<AppEventDto>) {
+        client.sendRaw(
+            ApiEndpoint(
+                path = "/v1/events/anonymous",
+                method = HttpMethod.POST,
+                body = body(AppEventsBody(events)),
+                requiresAuth = false,
+                timeoutSeconds = 15,
+            ),
+        )
+    }
+
     private inline fun <reified T> body(value: T): ApiBody<T> = ApiBody(value, serializer<T>())
 
     companion object {

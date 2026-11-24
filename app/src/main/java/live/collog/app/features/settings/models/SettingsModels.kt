@@ -135,6 +135,7 @@ internal suspend fun deleteAccountAndSignOut(environment: AppEnvironment) {
     environment.api.deleteAccount()
     if (environment.session.user?.id == userId) {
         environment.session.signOut()
+        environment.events.clear()
         environment.settings.isGuestMode = false
         // 로그아웃으로 이 화면이 사라져도 Google 정리는 끝까지 한다
         withContext(NonCancellable) { environment.afterSignOut?.invoke() }

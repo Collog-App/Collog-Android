@@ -34,6 +34,7 @@ class CollogApplication : Application() {
         environment = AppEnvironment(
             settings = AppSettings(getSharedPreferences("collog.settings", Context.MODE_PRIVATE)),
             session = AuthSession(CredentialStore(this)),
+            eventPreferences = getSharedPreferences("collog.events", Context.MODE_PRIVATE),
         )
         KakaoSignIn.init(this)
         environment.afterSignOut = {
