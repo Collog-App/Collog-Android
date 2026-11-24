@@ -85,6 +85,7 @@ class CallActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        app.callCenter.dropExpiredPostCallQuestion()
         // 블루투스·워치로 받아 마이크 없이 시작된 통화면, 화면이 보이는 지금 마이크를 다시 붙인다.
         CallService.restoreMicrophone(this)
     }

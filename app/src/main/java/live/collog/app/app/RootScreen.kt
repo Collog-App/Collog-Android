@@ -170,6 +170,8 @@ fun RootScreen() {
         // 이용 기록: 그날 첫 실행을 남기고, 쌓인 기록(꺼진 앱에서 받은 전화 등)을 보낸다
         environment.events.recordAppOpen()
         environment.events.flush()
+        // 몇 분 넘게 지난 통화의 한 줄 질문은 묻지 않는다
+        callCenter.dropExpiredPostCallQuestion()
         if (environment.session.isAuthenticated) {
             callCenter.resumePendingUploads()
             callCenter.updateNotificationAuthorization()

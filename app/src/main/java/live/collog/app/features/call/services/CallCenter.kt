@@ -57,13 +57,17 @@ class CallCenter(
 
     data class PendingOutgoing(val uuid: UUID, val calleeId: String, val name: String)
 
-    /** 통화 종료 화면에서 물을 지난 통화(이용 기록 `post_call_answer`). [ownerId]는 그 통화를 건 로그인 사용자. */
+    /**
+     * 통화 종료 화면에서 물을 지난 통화(이용 기록 `post_call_answer`). [ownerId]는 그 통화를 건 로그인 사용자,
+     * [endedAtMillis]는 통화가 끝난 시각([POST_CALL_QUESTION_TTL_MILLIS]가 지나면 묻지 않는다).
+     */
     data class PostCallQuestion(
         val callId: String,
         val peerId: String?,
         val peerName: String,
         val questions: List<String>,
         val ownerId: String,
+        val endedAtMillis: Long,
     )
 
     var activeCall by mutableStateOf<ActiveCall?>(null)
@@ -637,7 +641,13 @@ class CallCenter(
     private fun postCallQuestionFor(call: ActiveCall): PostCallQuestion? {
         if (call.direction != Direction.Outgoing || call.questions.isEmpty() || call.connectedAtMillis == null) return null
         val ownerId = callOwnerId ?: return null
-        return PostCallQuestion(call.id, call.peerId, call.peerName, call.questions, ownerId)
+        return PostCallQuestion(call.id, call.peerId, call.peerName, call.questions, ownerId, System.currentTimeMillis())
+    }
+
+    /** 통화가 끝나고 2분이 지난 질문은 버린다. 앱이 앞으로 올 때와 잠금 화면 통화 화면이 뜰 때 부른다. */
+    fun dropExpiredPostCallQuestion(nowMillis: Long = System.currentTimeMillis()) {
+        val question = postCallQuestion ?: return
+        if (nowMillis - question.endedAtMillis >= POST_CALL_QUESTION_TTL_MILLIS) postCallQuestion = null
     }
 
     /** [code] = YES·NO·NOT_SEEN. 통화마다 한 번 남기고 질문을 내린다. */
@@ -653,6 +663,11 @@ class CallCenter(
     }
 
     // endregion
+
+    companion object {
+        /** 통화 뒤 한 줄 질문을 남겨 두는 시간. 몇 시간 뒤 앱을 열었을 때 지난 통화를 묻지 않는다. */
+        const val POST_CALL_QUESTION_TTL_MILLIS = 2 * 60 * 1000L
+    }
 }
 
 /** LiveKit 방이 서버에서 지워짐(iOS `LiveKitError.roomDeleted`). */

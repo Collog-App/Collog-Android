@@ -123,6 +123,23 @@ class PostCallQuestionTests {
     }
 
     @Test
+    fun questionIsDroppedTwoMinutesAfterTheCallEnds() {
+        start(call())
+        center.finishRemoteCall()
+        val endedAt = center.postCallQuestion!!.endedAtMillis
+        assertTrue(System.currentTimeMillis() - endedAt in 0..5_000)
+
+        // 앱이 1분 59초 뒤 앞으로 왔다: 아직 묻는다
+        center.dropExpiredPostCallQuestion(endedAt + CallCenter.POST_CALL_QUESTION_TTL_MILLIS - 1)
+        assertNotNull(center.postCallQuestion)
+        // 2분이 지났다: 몇 시간 뒤 앱을 열어도 지난 통화를 묻지 않는다
+        center.dropExpiredPostCallQuestion(endedAt + CallCenter.POST_CALL_QUESTION_TTL_MILLIS)
+        assertNull(center.postCallQuestion)
+        center.answerPostCallQuestion(AppEventCode.YES)
+        assertTrue(answers().isEmpty())
+    }
+
+    @Test
     fun closingWithoutAnAnswerRecordsNothing() {
         start(call())
         center.finishRemoteCall()
