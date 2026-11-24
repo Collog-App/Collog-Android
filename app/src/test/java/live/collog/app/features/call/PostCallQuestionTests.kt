@@ -19,7 +19,9 @@ import live.collog.app.features.call.services.CallCenter
 import live.collog.app.features.call.services.handleIncomingPush
 import live.collog.app.shared.services.AppEventCode
 import live.collog.app.shared.services.AppEvents
+import live.collog.app.shared.services.api.ApiUser
 import live.collog.app.shared.services.api.AppEventDto
+import live.collog.app.shared.services.api.TokenResponse
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -137,6 +139,21 @@ class PostCallQuestionTests {
         assertNull(center.postCallQuestion)
         center.answerPostCallQuestion(AppEventCode.YES)
         assertTrue(answers().isEmpty())
+    }
+
+    @Test
+    fun answerIsRecordedOnlyForTheUserWhoPlacedTheCall() {
+        start(call())
+        center.finishRemoteCall()
+        // 화면이 계정 바뀜을 처리하기 전에 다른 사람이 로그인돼 있다
+        fixture.environment.session.apply(
+            TokenResponse("other-token", "other-refresh", ApiUser(id = "other", role = "CHILD", name = "다른 사람", signupCompleted = true)),
+        )
+
+        center.answerPostCallQuestion(AppEventCode.YES)
+
+        assertNull(center.postCallQuestion)
+        assertTrue(fixture.environment.events.queued.none { it.event.name == AppEvents.POST_CALL_ANSWER })
     }
 
     @Test

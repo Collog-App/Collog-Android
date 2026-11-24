@@ -650,10 +650,11 @@ class CallCenter(
         if (nowMillis - question.endedAtMillis >= POST_CALL_QUESTION_TTL_MILLIS) postCallQuestion = null
     }
 
-    /** [code] = YES·NO·NOT_SEEN. 통화마다 한 번 남기고 질문을 내린다. */
+    /** [code] = YES·NO·NOT_SEEN. 통화마다 한 번 남기고 질문을 내린다. 그 통화를 건 사람이 지금 로그인한 사람일 때만 남긴다. */
     fun answerPostCallQuestion(code: String) {
         val question = postCallQuestion ?: return
         postCallQuestion = null
+        if (question.ownerId != environment.session.user?.id) return
         environment.events.record(AppEvents.POST_CALL_ANSWER, code = code, subjectId = question.peerId, callId = question.callId)
     }
 
