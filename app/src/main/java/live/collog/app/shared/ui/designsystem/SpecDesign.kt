@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -60,16 +61,20 @@ object SpecColors {
 fun specText(weight: Pretendard, size: Float, color: Color = SpecColors.ink): TextStyle =
     pretendard(weight, size, color).copy(letterSpacing = 0.sp, lineHeight = (size * 1.19f).sp)
 
-/** 새 피그마 카드: 흰 바탕, 둥글기 18(설정 화면 15~18은 16·선택지 14, [radius]), 1dp 테두리, 아주 옅은 그림자(0,2,12 / 3%). */
+/**
+ * 새 피그마 카드: 흰 바탕, 둥글기 18(설정 화면 15~18은 16·선택지 14, [radius]), 1dp 테두리, 아주 옅은 그림자(0,2,12 / 3%).
+ * 내 기록을 볼 때([ViewerAccent.Mine])는 기본 테두리 자리에 주황 테두리(1.5dp)를 둔다(iOS `CardSurface`). 색을 따로 준 테두리는 그대로다.
+ */
 fun Modifier.specCard(
     padding: Dp = 15.dp,
     background: Color = Color.White,
     shadowed: Boolean = true,
     radius: Dp = 18.dp,
     borderColor: Color = SpecColors.cardBorder,
-): Modifier {
+): Modifier = composed {
     val shape = RoundedCornerShape(radius)
-    return fillMaxWidth()
+    val accentBorder = LocalViewerAccent.current.cardBorder?.takeIf { borderColor == SpecColors.cardBorder }
+    fillMaxWidth()
         .then(
             if (shadowed) {
                 Modifier.shadow(
@@ -82,7 +87,7 @@ fun Modifier.specCard(
             },
         )
         .background(background, shape)
-        .border(1.dp, borderColor, shape)
+        .border(if (accentBorder != null) 1.5.dp else 1.dp, accentBorder ?: borderColor, shape)
         .padding(padding)
 }
 

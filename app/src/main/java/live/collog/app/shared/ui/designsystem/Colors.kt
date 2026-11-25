@@ -50,6 +50,13 @@ object CollogColors {
     val orangeLight = Color(0xFFFFF4E6)
     val orange600 = Color(0xFFFF5900)
 
+    /** 내 기록(「나」)을 볼 때의 색. 큰 요소(링·아바타)는 selfAccent, 글자는 selfAccentDark. */
+    val selfAccent = Color(0xFFEF6C00)
+    val selfAccentDark = Color(0xFFAD4A00)
+    val selfAccentLight = Color(0xFFFFF1DC)
+    val selfAccentBorder = Color(0xFFFFD9A6)
+    val selfScreenBackground = Color(0xFFFFFCF7)
+
     val disabledForeground = gray500
 
     val kakaoYellow = Color(0xFFFAE100)

@@ -3,6 +3,7 @@ package live.collog.app.features.timeline.views
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,11 +21,10 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
@@ -62,12 +63,15 @@ import live.collog.app.features.timeline.views.components.CallTimelineCard
 import live.collog.app.features.timeline.views.components.CallTimelineDateHeader
 import live.collog.app.features.timeline.views.components.CallTimelineRail
 import live.collog.app.features.timeline.views.components.TimelineWeekHeader
+import live.collog.app.features.timeline.views.components.ViewerBadgeChip
+import live.collog.app.features.timeline.views.components.ViewerProfileHeader
 import live.collog.app.features.timeline.views.components.WeekNavigator
-import live.collog.app.shared.components.spec.SubjectChip
+import live.collog.app.shared.components.emptystate.AnalysisEmptyAction
 import live.collog.app.shared.components.emptystate.AnalysisEmptyState
 import live.collog.app.shared.components.emptystate.EmptyState
 import live.collog.app.shared.components.emptystate.NotSharedEmptyState
 import live.collog.app.shared.components.navbar.CollapsingHeaderScrollView
+import live.collog.app.shared.components.navbar.CollapsingLargeTitle
 import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.navigation.LocalTabManager
 import live.collog.app.shared.navigation.MainTab
@@ -75,10 +79,10 @@ import live.collog.app.shared.services.AppEventCode
 import live.collog.app.shared.ui.Haptics
 import live.collog.app.shared.ui.OnChange
 import live.collog.app.shared.ui.designsystem.CollogColors
-import live.collog.app.shared.ui.designsystem.CollogIcon
-import live.collog.app.shared.ui.designsystem.CollogType
+import live.collog.app.shared.ui.designsystem.LocalViewerAccent
 import live.collog.app.shared.ui.designsystem.Radius
 import live.collog.app.shared.ui.designsystem.Spacing
+import live.collog.app.shared.ui.designsystem.ViewerAccent
 import live.collog.app.shared.ui.pressable
 
 private const val OldestOffset = -25
@@ -94,26 +98,33 @@ private val ActiveWeekThreshold = 56.dp // 머리말 막대(52dp) 바로 아래
 @Composable
 fun ReportTimelineScreen(initialTabIndex: Int = 1) {
     val navigation = LocalNavigationManager.current
-    Box(Modifier.fillMaxSize()) {
-        ReportTimelineRoot(initialTabIndex)
+    // iOS `.environment(\.viewerAccent, accent)`: 밀어 넣은 통화 분석 화면도 지금 보는 사람의 색을 쓴다
+    var accent by remember { mutableStateOf(ViewerAccent.Family) }
+    CompositionLocalProvider(LocalViewerAccent provides accent) {
+        Box(Modifier.fillMaxSize()) {
+            ReportTimelineRoot(initialTabIndex, onAccentChange = { accent = it })
 
-        val route = navigation.path.lastOrNull() as? CallAnalysisRoute
-        if (route != null) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(CollogColors.gray00)
-                    // 아래 탭 화면으로 터치가 새지 않게 막는다
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
-            ) {
-                key(route) { CallAnalysisScreen(route.callId) }
+            val route = navigation.path.lastOrNull() as? CallAnalysisRoute
+            if (route != null) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(CollogColors.gray00)
+                        // 아래 탭 화면으로 터치가 새지 않게 막는다
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+                ) {
+                    key(route) { CallAnalysisScreen(route.callId) }
+                }
             }
         }
     }
 }
 
+/** 타임라인 본문을 옆으로 밀어 사람을 바꾸는 거리(iOS `personSwipe` 70pt). */
+private val PersonSwipeDistance = 70.dp
+
 @Composable
-private fun ReportTimelineRoot(initialTabIndex: Int) {
+private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAccent) -> Unit) {
     val environment = LocalAppEnvironment.current
     val tabManager = LocalTabManager.current
     val navigation = LocalNavigationManager.current
@@ -132,6 +143,11 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
 
     val contacts = environment.family.contacts
     val subjects = viewModel.subjects(environment)
+    val isSelfSelected = viewModel.isSelfSelected
+    // 가족 = 기존 그린, 나 = 주황. 둘러보기처럼 고른 사람이 없으면 그린
+    val accent = if (isSelfSelected) ViewerAccent.Mine else ViewerAccent.Family
+    SideEffect { onAccentChange(accent) }
+    val displayTitle = viewModel.displayTitle
     val thresholdPx = with(density) { WindowInsets.statusBars.getTop(this) + ActiveWeekThreshold.toPx() }
     val currentOffsetPage = PageOffsets.lastIndex
 
@@ -165,6 +181,12 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
         weekHeaderMinYs.clear()
         memberSelectionCount += 1
         scope.launch { viewModel.refresh(environment) }
+    }
+
+    fun selectNeighbor(delta: Int) {
+        val index = subjects.indexOfFirst { it.id == viewModel.selectedContactId }
+        if (index < 0) return
+        subjects.getOrNull(index + delta)?.let(::select)
     }
 
     fun updateActiveVerticalWeek(offset: Int, minY: Float) {
@@ -245,8 +267,11 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
 
     @Composable
     fun EmptyAnalysisContent(page: TimelineWeekPage) {
-        // "나"를 골랐는데 기록이 없으면 전화·초대를 권하지 않는다(가족이 없을 때만 아래 초대 안내)
-        if (viewModel.selectedContactId == TimelineViewModel.SelfContactId && contacts.isNotEmpty()) {
+        // "나"를 골랐는데 기록이 없으면 전화·초대를 권하지 않는다(가족이 없을 때만 아래 초대 안내).
+        // 분석 중이거나 가장 최근 통화가 분석에서 빠졌으면·실패했으면 그 사유는 가족과 같이 알린다
+        val selfAction = AnalysisEmptyAction.resolve(page.calls, canCall = false, isCurrentWeek = page.offset == 0, isGuest = false)
+        val explainsCall = selfAction in listOf(AnalysisEmptyAction.Processing, AnalysisEmptyAction.Excluded, AnalysisEmptyAction.Failed)
+        if (isSelfSelected && contacts.isNotEmpty() && !explainsCall) {
             EmptyState(
                 symbol = "doc.text.magnifyingglass",
                 title = "아직 분석된 내 통화가 없어요.",
@@ -366,34 +391,6 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
     }
 
     @Composable
-    fun MemberSelector() {
-        if (subjects.size > 1) {
-            var expanded by remember { mutableStateOf(false) }
-            Box {
-                SubjectChip(viewModel.selectedMember, Modifier.pressable { expanded = true })
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    subjects.forEach { contact ->
-                        DropdownMenuItem(
-                            text = { Text(contact.name, style = CollogType.body02Medium, color = CollogColors.gray900) },
-                            leadingIcon = if (contact.id == viewModel.selectedContactId) {
-                                { CollogIcon("checkmark", size = 20.dp, color = CollogColors.gray900) }
-                            } else {
-                                null
-                            },
-                            onClick = {
-                                expanded = false
-                                select(contact)
-                            },
-                        )
-                    }
-                }
-            }
-        } else {
-            SubjectChip(viewModel.selectedMember)
-        }
-    }
-
-    @Composable
     fun PagerPage(offset: Int) {
         Box(Modifier.fillMaxWidth().wrapContentHeight(Alignment.Top, unbounded = true)) {
             Box(
@@ -448,12 +445,19 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
         maxOf(pageHeights[viewModel.weekOffset]?.toDp() ?: 340.dp, 240.dp)
     }
 
+    CompositionLocalProvider(LocalViewerAccent provides accent) {
     CollapsingHeaderScrollView(
-        title = viewModel.title,
+        title = displayTitle,
         onRefresh = { viewModel.refresh(environment, forceReload = true) },
         scrollReset = tabManager.reselectionCount + memberSelectionCount,
         showsScrollToTopButton = tab == MainTab.Timeline,
-        trailing = { MemberSelector() },
+        large = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.x4)) {
+                ViewerProfileHeader(subjects, viewModel.selectedContactId, onSelect = ::select)
+                CollapsingLargeTitle(displayTitle)
+            }
+        },
+        trailing = { ViewerBadgeChip(viewModel.selectedMember) },
         sticky = if (tab == MainTab.Timeline) {
             { TimelineWeekHeader(viewModel.page(activeVerticalWeek).title) }
         } else {
@@ -470,7 +474,17 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
     ) {
         Column(Modifier.padding(bottom = Spacing.x8), verticalArrangement = Arrangement.spacedBy(Spacing.x3)) {
             if (tab == MainTab.Timeline) {
-                Column {
+                // 타임라인 본문에서 옆으로 밀면 이전·다음 사람으로 바뀐다. 리포트는 주차 가로 넘기기가 있어 머리말에서만 바꾼다
+                Column(
+                    Modifier.pointerInput(subjects, viewModel.selectedContactId) {
+                        var total = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { total = 0f },
+                            onDragCancel = { total = 0f },
+                            onDragEnd = { if (abs(total) > PersonSwipeDistance.toPx()) selectNeighbor(if (total < 0) 1 else -1) },
+                        ) { _, amount -> total += amount }
+                    },
+                ) {
                     VerticalPageOffsets.forEach { offset -> VerticalWeek(offset) }
                 }
             } else {
@@ -478,7 +492,7 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
                     WeekNavigator(
                         title = viewModel.week.title,
                         rangeText = viewModel.week.rangeText,
-                        modifier = Modifier.background(CollogColors.gray50),
+                        modifier = Modifier.background(accent.background),
                         canGoForward = viewModel.canGoForward,
                         onPrevious = { move(-1) },
                         onNext = { move(1) },
@@ -492,5 +506,6 @@ private fun ReportTimelineRoot(initialTabIndex: Int) {
                 }
             }
         }
+    }
     }
 }

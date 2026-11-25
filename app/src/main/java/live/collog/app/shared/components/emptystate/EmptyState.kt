@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogIcon
 import live.collog.app.shared.ui.designsystem.CollogType
+import live.collog.app.shared.ui.designsystem.LocalViewerAccent
 import live.collog.app.shared.ui.designsystem.Spacing
 import live.collog.app.shared.ui.pressable
 
@@ -50,16 +51,18 @@ fun EmptyState(
         }
 
         if (actionTitle != null && action != null) {
+            // 내 기록을 볼 때는 주황(iOS `viewerAccent`)
+            val accent = LocalViewerAccent.current
             Box(
                 Modifier
                     .padding(top = Spacing.x1)
                     .pressable(onClick = action)
                     .height(40.dp)
-                    .background(CollogColors.greenLight, CircleShape)
+                    .background(accent.light, CircleShape)
                     .padding(horizontal = Spacing.x4),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(actionTitle, style = CollogType.body02Semibold, color = CollogColors.greenDark)
+                Text(actionTitle, style = CollogType.body02Semibold, color = accent.text)
             }
         }
     }

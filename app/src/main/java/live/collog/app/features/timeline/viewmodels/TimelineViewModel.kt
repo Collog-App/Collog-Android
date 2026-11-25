@@ -55,6 +55,16 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
 
     val title: String get() = if (this.selectedTabIndex == 0) "리포트" else "타임라인"
 
+    val isSelfSelected: Boolean get() = selectedContactId == SelfContactId
+
+    /** iOS `ReportTimelineView.displayTitle`: 누구의 기록인지 제목에 적는다. 고른 사람이 없으면 탭 이름만. */
+    val displayTitle: String
+        get() = when {
+            isSelfSelected -> "나의 $title"
+            selectedContactId == null -> title
+            else -> "${selectedMember}님의 $title"
+        }
+
     val canGoForward: Boolean get() = weekOffset < 0
 
     val week: TimelineWeekPage get() = page(weekOffset)

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
@@ -83,6 +84,8 @@ import live.collog.app.features.home.viewmodels.TodoViewModel
 import live.collog.app.features.settings.views.FamilyInvitationSheet
 import live.collog.app.features.settings.views.FamilyMembersSettingsScreen
 import live.collog.app.features.timeline.models.WeeklySpeechHistory
+import live.collog.app.features.timeline.views.components.ViewerAvatar
+import live.collog.app.features.timeline.views.components.viewerRelationText
 import live.collog.app.shared.components.chart.TrendSeries
 import live.collog.app.shared.components.chart.smoothPath
 import live.collog.app.shared.components.emptystate.AnalysisEmptyState
@@ -256,7 +259,7 @@ private fun HomeRoot(viewModel: HomeViewModel) {
             ) {
                 if (selectedContact != null) {
                     SubjectHeader(
-                        name = selectedContact.name,
+                        contact = selectedContact,
                         contacts = contacts,
                         lastCallText = lastCallSentence(
                             viewModel.lastCallAt[selectedContact.id],
@@ -481,36 +484,66 @@ private fun HomeTopBar(onNotifications: () -> Unit) {
     }
 }
 
-/** 큰 가족 이름과 마지막 통화(643:6339~6342). 가족이 둘 이상이면 이름을 눌러 바꾼다. */
+private val RelationTagText = Color(0xFF159A5E)
+private val RelationTagSurface = Color(0xFFE6F7EE)
+
+/**
+ * 피그마 「홈 · 메인」 머리말(iOS `HomeView.largeTitle`): 아바타 53 · 이름 Bold 22 + 관계 태그 + 화살표 · 마지막 통화 14.
+ * 가족이 둘 이상이면 이름을 눌러 바꾼다.
+ */
 @Composable
-private fun SubjectHeader(name: String, contacts: List<FamilyContact>, lastCallText: String?, onSelect: (FamilyContact) -> Unit) {
+private fun SubjectHeader(contact: FamilyContact, contacts: List<FamilyContact>, lastCallText: String?, onSelect: (FamilyContact) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val selectable = contacts.size > 1
-    Column {
-        Box {
-            Row(
-                Modifier.pressable(enabled = selectable) { expanded = true },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Text(name, style = specText(Pretendard.Bold, 22f), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                if (selectable) CollogIcon("chevron.down", size = 18.dp, color = SpecColors.sub)
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = Color.White) {
-                contacts.forEach { contact ->
-                    DropdownMenuItem(
-                        text = { Text(contact.name, style = specText(Pretendard.Medium, 14f)) },
-                        onClick = {
-                            expanded = false
-                            onSelect(contact)
-                        },
-                    )
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+        ViewerAvatar(contact, 53.dp, fullColor = true)
+
+        Column {
+            Box {
+                Row(
+                    Modifier.pressable(enabled = selectable) { expanded = true },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Row(
+                        Modifier.weight(1f, fill = false),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            contact.name,
+                            style = specText(Pretendard.Bold, 22f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        Text(
+                            viewerRelationText(contact),
+                            style = specText(Pretendard.SemiBold, 13.5f, RelationTagText),
+                            maxLines = 1,
+                            modifier = Modifier
+                                .background(RelationTagSurface, CircleShape)
+                                .padding(horizontal = 10.35.dp, vertical = 4.14.dp),
+                        )
+                    }
+                    if (selectable) CollogIcon("chevron.down", size = 18.dp, color = SpecColors.sub)
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = Color.White) {
+                    contacts.forEach { item ->
+                        DropdownMenuItem(
+                            text = { Text(item.name, style = specText(Pretendard.Medium, 14f)) },
+                            onClick = {
+                                expanded = false
+                                onSelect(item)
+                            },
+                        )
+                    }
                 }
             }
-        }
-        if (lastCallText != null) {
-            Spacer(Modifier.height(8.dp))
-            Text(lastCallText, style = specText(Pretendard.Regular, 12f, SpecColors.muted))
+            if (lastCallText != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(lastCallText, style = specText(Pretendard.Regular, 14f, SpecColors.muted))
+            }
         }
     }
 }

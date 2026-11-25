@@ -58,6 +58,7 @@ import live.collog.app.shared.ui.Haptics
 import live.collog.app.shared.ui.OnChange
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogIcon
+import live.collog.app.shared.ui.designsystem.LocalViewerAccent
 import live.collog.app.shared.ui.designsystem.Pretendard
 import live.collog.app.shared.ui.designsystem.Spacing
 import live.collog.app.shared.ui.designsystem.specText
@@ -102,6 +103,8 @@ fun CollapsingHeaderScrollView(
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
+    // iOS `viewerAccent.background`: 내 기록을 볼 때는 바탕이 옅은 주황
+    val accent = LocalViewerAccent.current
     val currentOnRefresh by rememberUpdatedState(onRefresh)
 
     val statusBarPx = WindowInsets.statusBars.getTop(density)
@@ -177,7 +180,7 @@ fun CollapsingHeaderScrollView(
     Box(
         modifier
             .fillMaxSize()
-            .background(CollogColors.gray50)
+            .background(accent.background)
             .onGloballyPositioned { viewportTop = it.positionInRoot().y }
             .nestedScroll(pullConnection),
     ) {
@@ -206,7 +209,7 @@ fun CollapsingHeaderScrollView(
             if (sticky != null) {
                 Box(
                     Modifier
-                        .background(CollogColors.gray50)
+                        .background(accent.background)
                         .onGloballyPositioned { stickyTop = it.positionInRoot().y }
                         .graphicsLayer { alpha = if (isSticky) 0f else 1f },
                 ) { sticky() }
@@ -222,12 +225,12 @@ fun CollapsingHeaderScrollView(
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
-                Box(Modifier.background(CollogColors.gray50)) { pinnedSticky() }
+                Box(Modifier.background(accent.background)) { pinnedSticky() }
             }
         }
 
         // 위쪽 막대: 작은 제목은 스크롤에 따라 나타난다
-        Box(Modifier.align(Alignment.TopStart).fillMaxWidth().background(CollogColors.gray50).statusBarsPadding()) {
+        Box(Modifier.align(Alignment.TopStart).fillMaxWidth().background(accent.background).statusBarsPadding()) {
             Row(
                 Modifier.fillMaxWidth().height(BarHeight).padding(horizontal = Spacing.x5),
                 verticalAlignment = Alignment.CenterVertically,
