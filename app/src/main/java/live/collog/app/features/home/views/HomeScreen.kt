@@ -198,8 +198,13 @@ private fun HomeRoot(viewModel: HomeViewModel) {
     // 처음 보일 때와 앱으로 돌아올 때마다 불러와 새 날의 추천이 나오게 한다
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         scope.launch { todoViewModel.load(environment) }
-        // 그사이 가족이 공유를 껐거나 다시 켰으면 보이던 기록을 그대로 두지 않는다(처음 들어올 때는 첫 읽기와 겹치지 않게 뷰모델이 로드 전이면 건너뛴다)
-        scope.launch { viewModel.revalidateSharing(environment, environment.family.selectedContact) }
+        // 마지막 통화 시각과 분석 상태를 화면 깜빡임 없이 다시 읽는다. 그사이 가족이 공유를 껐거나 다시 켰으면 보이던 기록을 그대로 두지 않는다
+        // (처음 들어올 때는 첫 읽기와 겹치지 않게 뷰모델이 로드 전이면 건너뛴다)
+        scope.launch { viewModel.refreshCalls(environment, environment.family.selectedContact) }
+    }
+    // 통화가 끝났을 때도 같다(iOS `callCenter.activeCall == nil`)
+    OnChange(callCenter.activeCall == null) { _, isIdle ->
+        if (isIdle) scope.launch { viewModel.refreshCalls(environment, environment.family.selectedContact) }
     }
     OnChange(tabManager.reselectionCount) { _, _ -> scrollState.animateScrollTo(0, tween(320)) }
 

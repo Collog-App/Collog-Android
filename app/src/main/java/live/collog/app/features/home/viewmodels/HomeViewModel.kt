@@ -65,23 +65,36 @@ class HomeViewModel {
     }
 
     /**
-     * 앱으로 돌아왔을 때: 화면을 비우지 않고 리포트·통화 목록이 열리는지만 조용히 묻는다.
-     * 그사이 가족이 공유를 껐거나 다시 켰으면(보이는 상태와 달라졌으면) 전체를 다시 읽는다. 403 이 아닌 실패는 그대로 둔다.
+     * iOS `refreshCalls`: 화면을 비우지 않고 통화 목록만 다시 읽는다(앱 복귀·통화 종료 때).
+     * 분석 완료 건수가 바뀌었거나 아직 결과 카드가 없으면 전체를 다시 읽는다.
+     * 그사이 가족이 공유를 껐거나 다시 켰으면(보이는 상태와 달라졌으면)도 전체를 다시 읽는다. 403 이 아닌 실패는 그대로 둔다.
      */
-    suspend fun revalidateSharing(environment: AppEnvironment, contact: FamilyContact?) {
+    suspend fun refreshCalls(environment: AppEnvironment, contact: FamilyContact?) {
         if (environment.settings.isGuestMode || !environment.session.isAuthenticated || !hasLoaded || !isLoaded) return
         val parentId = contact?.userId ?: return
         val generation = this.generation
         val api = environment.api
 
-        val calls = ApiError.accessCheck { api.calls(parentId) } ?: return
+        val callList = ApiError.accessCheck { api.calls(parentId) } ?: return
         if (this.generation != generation) return
-        if (calls.first != callsNotShared) {
+        if (callList.first != callsNotShared) {
             refresh(environment, contact)
             return
         }
+        val calls = callList.second
+        if (calls != null) {
+            val analyzedBefore = recentCalls.count { it.isAnalyzed }
+            recentCalls = calls
+            recentCallsError = null
+            val latest = calls.maxOfOrNull { it.startedAt }
+            lastCallAt = if (latest != null) lastCallAt + (contact.id to latest) else lastCallAt - contact.id
+            if (calls.count { it.isAnalyzed } != analyzedBefore || (healthSummary == null && !reportNotShared)) {
+                refresh(environment, contact)
+                return
+            }
+        }
 
-        // 리포트 공유는 통화 기록과 따로 켜고 끈다. 못 불러와 비어 있는 화면은 비교할 기준이 없다
+        // 리포트 공유는 통화 기록과 따로 켜고 끈다
         if (healthSummary == null && !reportNotShared) return
         val report = ApiError.accessCheck { api.report(parentId) } ?: return
         if (this.generation != generation) return

@@ -181,7 +181,7 @@ class HomeSummaryTests {
             assertEquals(1, model.recentCalls.size)
 
             serveHome(fixture, forbidden, forbidden)
-            model.revalidateSharing(fixture.environment, contact = mom)
+            model.refreshCalls(fixture.environment, contact = mom)
 
             assertTrue(model.reportNotShared)
             assertTrue(model.callsNotShared)
@@ -204,7 +204,7 @@ class HomeSummaryTests {
             assertNotNull(model.healthSummary)
 
             serveHome(fixture, openCalls, forbidden)
-            model.revalidateSharing(fixture.environment, contact = mom)
+            model.refreshCalls(fixture.environment, contact = mom)
 
             assertTrue(model.reportNotShared)
             assertNull(model.healthSummary)
@@ -226,7 +226,7 @@ class HomeSummaryTests {
             assertTrue(model.reportNotShared)
 
             serveHome(fixture, openCalls, openReport)
-            model.revalidateSharing(fixture.environment, contact = mom)
+            model.refreshCalls(fixture.environment, contact = mom)
 
             assertFalse(model.reportNotShared)
             assertFalse(model.callsNotShared)
@@ -247,7 +247,7 @@ class HomeSummaryTests {
 
             val failure = 503 to """{"code":"ERROR","message":"잠시 후 다시 시도해주세요"}"""
             serveHome(fixture, failure, failure)
-            model.revalidateSharing(fixture.environment, contact = mom)
+            model.refreshCalls(fixture.environment, contact = mom)
 
             assertNotNull(model.healthSummary)
             assertEquals(1, model.recentCalls.size)
@@ -265,8 +265,79 @@ class HomeSummaryTests {
         try {
             serveHome(fixture, forbidden, forbidden)
             val model = HomeViewModel()
-            model.revalidateSharing(fixture.environment, contact = mom)
+            model.refreshCalls(fixture.environment, contact = mom)
             assertTrue(fixture.paths.isEmpty())
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    private val twoCalls = { secondState: String ->
+        200 to
+            """{"calls":[{"callId":"c1","parentId":"mom","state":"ANALYZED","startedAt":"2026-11-05T03:00:00Z","durationSec":120,"recorded":true},""" +
+            """{"callId":"c2","parentId":"mom","state":"$secondState","startedAt":"2026-11-06T03:00:00Z","durationSec":60,"recorded":true}]}"""
+    }
+
+    // iOS `refreshCalls`: 앱으로 돌아왔거나 통화가 끝났을 때 통화 목록만 조용히 다시 읽는다
+    @Test
+    fun homeUpdatesTheLastCallQuietlyWhenNoNewAnalysisFinished() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            serveHome(fixture, openCalls, openReport)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+            val before = fixture.paths.size
+
+            serveHome(fixture, twoCalls("ENDED"), openReport)
+            model.refreshCalls(fixture.environment, contact = mom)
+
+            assertEquals(2, model.recentCalls.size)
+            assertEquals(java.time.Instant.parse("2026-11-06T03:00:00Z"), model.lastCallAt[mom.id])
+            assertNotNull(model.healthSummary)
+            // 통화 목록과 리포트 공유 확인 두 번뿐: 화면을 비우고 전체를 다시 읽지 않는다
+            assertEquals(before + 2, fixture.paths.size)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun homeReadsEverythingAgainOnceAnotherCallIsAnalyzed() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            serveHome(fixture, openCalls, openReport)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+            val before = fixture.paths.size
+
+            serveHome(fixture, twoCalls("ANALYZED"), openReport)
+            model.refreshCalls(fixture.environment, contact = mom)
+
+            assertEquals(2, model.recentCalls.size)
+            assertNotNull(model.healthSummary)
+            assertTrue(model.isLoaded)
+            // 통화 목록 한 번 + 전체 다시 읽기(통화·기준선·리포트)
+            assertEquals(before + 4, fixture.paths.size)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun homeReadsEverythingAgainWhileThereIsNoResultCardYet() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            val failure = 503 to """{"code":"ERROR","message":"잠시 후 다시 시도해주세요"}"""
+            serveHome(fixture, openCalls, failure)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+            assertNull(model.healthSummary)
+
+            serveHome(fixture, openCalls, openReport)
+            model.refreshCalls(fixture.environment, contact = mom)
+
+            assertNotNull(model.healthSummary)
+            assertNull(model.loadError)
         } finally {
             fixture.cleanUp()
         }
