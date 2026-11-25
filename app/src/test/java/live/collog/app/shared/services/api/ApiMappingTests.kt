@@ -49,9 +49,35 @@ class ApiMappingTests {
     }
 
     @Test
-    fun trendNeedsTwoMeasuredPoints() {
+    fun trendWithOneMeasuredPointUsesItAsTheFirstReference() {
         val one = AcousticTrendDto("SPEECH_RATE", listOf(AcousticTrendPointDto("2026-09-12", 200.0), AcousticTrendPointDto("2026-09-13", null)))
-        assertNull(TrendSeries.from(one, null))
+        val series = TrendSeries.from(one, null)!!
+        assertEquals(1, series.points.size)
+        assertEquals(200.0, series.initialReference!!, 1e-9)
+        assertEquals("첫 기준점", series.referenceCaption(series.latest!!))
+
+        assertNull(TrendSeries.from(AcousticTrendDto("SPEECH_RATE", listOf(AcousticTrendPointDto("2026-09-13", null))), null))
+    }
+
+    @Test
+    fun firstReferenceIsTheMedianOfEarlierCallsUntilTheBaselineIsReady() {
+        val trend = AcousticTrendDto(
+            "SPEECH_RATE",
+            listOf("12" to 200.0, "13" to 210.0, "14" to 190.0, "15" to 230.0).map { AcousticTrendPointDto("2026-09-${it.first}", it.second) },
+        )
+        val series = TrendSeries.from(trend, null)!!
+        // 이번 값(230)을 뺀 이전 값 200·210·190 의 중앙값
+        assertEquals(200.0, series.initialReference!!, 1e-9)
+        assertEquals("기준점보다 큼", series.referenceCaption(series.latest!!))
+        assertEquals("기준점과 비슷", series.referenceCaption(series.points[0]))
+        assertEquals("기준점보다 작음", series.referenceCaption(series.points[2]))
+
+        // 개인 기준선이 준비되면 첫 기준점을 쓰지 않는다
+        val ready = BaselineDto("SPEECH_RATE", "MORNING", "ROLLING", "READY", 10, 5, median = 205.0, mad = 6.745)
+        val withBaseline = TrendSeries.from(trend, ready)!!
+        assertTrue(withBaseline.hasPersonalBaseline)
+        assertNull(withBaseline.initialReference)
+        assertEquals("비교할 기록 수집 중", withBaseline.referenceCaption(withBaseline.latest!!))
     }
 
     @Test

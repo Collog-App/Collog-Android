@@ -80,6 +80,7 @@ class WeeklySpeechHistory(
             points = points,
             normalRange = normal,
             hasPersonalBaseline = baseline?.isReady == true,
+            initialReference = TrendSeries.initialReference(values, baselineReady = baseline?.isReady == true),
         )
     }
 

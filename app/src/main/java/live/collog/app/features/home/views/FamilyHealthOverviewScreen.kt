@@ -65,7 +65,7 @@ internal fun interpretation(trend: TrendSeries?): String {
     val latest = trend?.latest
         ?: return "음성 변화를 비교할 기록이 부족해요. 대화 내용은 먼저 확인할 수 있어요."
     if (!trend.hasPersonalBaseline) {
-        return "측정값을 모으고 있어요. 아직 평소와의 차이를 판단하기 어려워요."
+        return "첫 기준점과 비교해 보여드려요. 통화가 4주 쌓이면 평소 범위로 바뀌어요."
     }
     val status = if (trend.isWithinNormalRange(latest)) "평소 범위 안에 있어요." else "평소 범위를 벗어난 값이 확인됐어요."
     val rate = changeRate(trend) ?: return "${trend.metricName}는 $status"

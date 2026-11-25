@@ -25,11 +25,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -53,6 +53,12 @@ private val PlotPaddingX = 8.dp
 private val PlotPaddingY = Spacing.x2
 private val AxisLabelHeight = 22.dp
 private val READOUT_FORMAT = DecimalFormat("0", DecimalFormatSymbols(Locale.ROOT))
+// iOS `Color.gray400`·`Color.gray700`
+private val ReferenceLineColor = Color(0xFFDCDEE3)
+private val ReferenceDotColor = Color(0xFF868B94)
+
+/** 개인 기준선이 아직 없고 첫 기준점이 있을 때만 점선과 빈 점을 그린다. */
+private val TrendSeries.showsInitialReference: Boolean get() = !hasPersonalBaseline && initialReference != null
 
 /**
  * iOS `TrendChartView`: 주간 추세선. 짚으면 가장 가까운 점이 선택되고, 처음에는 왼쪽에서 오른쪽으로 펼쳐진다.
@@ -79,8 +85,8 @@ fun TrendChart(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.x3)) {
         if (showsReadout) Readout(series, focusedPoint, compact)
 
-        // 점이 하나뿐이면 선이 안 그려지니 읽는 값만 보인다
-        if (series.points.size >= 2) Box(
+        // 점이 하나뿐이면 선이 안 그려지니 읽는 값만 보인다. 첫 기준점(점·점선)이 있으면 하나여도 그린다
+        if (series.points.size >= 2 || series.showsInitialReference) Box(
             Modifier
                 .fillMaxWidth()
                 .height(chartHeight)
@@ -142,7 +148,7 @@ private fun Readout(series: TrendSeries, focusedPoint: TrendPoint?, compact: Boo
                 )
             } else {
                 Text(
-                    "비교할 기록 수집 중",
+                    series.referenceCaption(focusedPoint),
                     style = specText(Pretendard.Regular, tagSize, SpecColors.muted),
                     modifier = Modifier.alignBy(FirstBaseline),
                 )
@@ -180,7 +186,8 @@ private fun AxisLabels(series: TrendSeries, compact: Boolean) {
 }
 
 private fun yDomain(series: TrendSeries): ClosedFloatingPointRange<Double> {
-    val values = series.points.map { it.value } + listOf(series.normalRange.start, series.normalRange.endInclusive)
+    val values = series.points.map { it.value } + listOf(series.normalRange.start, series.normalRange.endInclusive) +
+        listOfNotNull(series.initialReference)
     val minimum = values.min()
     val maximum = values.max()
     val padding = maxOf((maximum - minimum) * 0.25, 1.0)
@@ -225,6 +232,22 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawChart(
         drawLine(SpecColors.line, Offset(0f, medianY), Offset(size.width, medianY), strokeWidth = 1.dp.toPx())
     }
 
+    // 기준선 전: 첫 기준점 높이에 점선을 긋고 첫 주 자리에 빈 점을 둔다(iOS `RuleMark`·`PointMark`)
+    val reference = series.initialReference
+    if (series.showsInitialReference && reference != null) {
+        val referenceY = y(reference)
+        drawLine(
+            ReferenceLineColor,
+            Offset(0f, referenceY),
+            Offset(size.width, referenceY),
+            strokeWidth = 1.dp.toPx(),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 4.dp.toPx())),
+        )
+        val center = Offset(x(points.first()), referenceY)
+        drawCircle(Color.White, radius = 5.5.dp.toPx(), center = center)
+        drawCircle(ReferenceDotColor, radius = 4.5.dp.toPx(), center = center, style = Stroke(2.dp.toPx()))
+    }
+
     val offsets = points.map { Offset(x(it), y(it.value)) }
     val curve = smoothPath(offsets)
 
@@ -249,13 +272,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawChart(
     )
 
     if (focusedPoint != null) {
-        val side = 9.dp.toPx()
-        drawRoundRect(
-            SpecColors.green,
-            Offset(x(focusedPoint) - side / 2, y(focusedPoint.value) - side / 2),
-            Size(side, side),
-            CornerRadius(2.dp.toPx()),
-        )
+        drawCircle(SpecColors.chartGreen, radius = 4.5.dp.toPx(), center = Offset(x(focusedPoint), y(focusedPoint.value)))
     }
 }
 

@@ -539,7 +539,7 @@ private fun SpeechRateCard(summary: FamilyHealthSummary, trend: TrendSeries?, on
                                 style = specText(Pretendard.Bold, 11f, if (within) SpecColors.green else SpecColors.orange),
                             )
                         } else {
-                            Text("비교할 기록 수집 중", style = specText(Pretendard.Regular, 11f, SpecColors.muted))
+                            Text(trend.referenceCaption(latest), style = specText(Pretendard.Regular, 11f, SpecColors.muted))
                         }
                     }
                 }

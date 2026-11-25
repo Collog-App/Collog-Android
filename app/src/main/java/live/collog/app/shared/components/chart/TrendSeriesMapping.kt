@@ -8,14 +8,14 @@ import live.collog.app.shared.services.api.MetricLabel
 
 private const val NORMAL_RANGE_FACTOR = 1.5 / 0.6745
 
-/** iOS `TrendSeries.init?(trend:baseline:)`. 점이 둘보다 적으면 null. */
+/** iOS `TrendSeries.init?(trend:baseline:)`. 점이 없으면 null. */
 fun TrendSeries.Companion.from(trend: AcousticTrendDto, baseline: BaselineDto?): TrendSeries? {
     val points = trend.points.mapNotNull { point ->
         val value = point.value ?: return@mapNotNull null
         val date = ApiFormat.parseIsoDate(point.date) ?: return@mapNotNull null
         TrendPoint(date, ApiFormat.shortDate(date), value)
     }
-    if (points.size < 2) return null
+    if (points.isEmpty()) return null
 
     val values = points.map { it.value }
     val baselineMedian = baseline?.median
@@ -36,5 +36,7 @@ fun TrendSeries.Companion.from(trend: AcousticTrendDto, baseline: BaselineDto?):
         points = points,
         normalRange = range,
         hasPersonalBaseline = baseline?.isReady == true,
+        // 기준선이 준비되기 전에는 이전 통화 값으로 첫 기준점을 잡는다
+        initialReference = TrendSeries.initialReference(values, baselineReady = baseline?.isReady == true),
     )
 }

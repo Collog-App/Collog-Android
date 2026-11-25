@@ -464,7 +464,7 @@ class HomeSummaryTests {
             ),
         )
         val collecting = TrendSeries.from(data, null)!!
-        assertEquals("측정값을 모으고 있어요. 아직 평소와의 차이를 판단하기 어려워요.", interpretation(collecting))
+        assertEquals("첫 기준점과 비교해 보여드려요. 통화가 4주 쌓이면 평소 범위로 바뀌어요.", interpretation(collecting))
         assertEquals(10.526315789473683, changeRate(collecting)!!, 1e-9)
 
         val withBaseline = TrendSeries.from(data, baseline())!!
