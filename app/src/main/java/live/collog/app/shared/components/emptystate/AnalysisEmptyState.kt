@@ -44,6 +44,8 @@ import live.collog.app.shared.ui.pressable
 /** iOS `AnalysisEmptyAction`: 분석된 통화가 없을 때 빈 화면이 권하는 다음 행동. */
 enum class AnalysisEmptyAction {
     Processing,
+    Excluded,
+    Failed,
     Family,
     Call,
     CurrentWeek,
@@ -57,6 +59,10 @@ enum class AnalysisEmptyAction {
             isGuest: Boolean,
         ): AnalysisEmptyAction {
             if (calls.any { it.isPendingAnalysis }) return Processing
+            // 실제로 통화가 이어진(1초 이상) 가장 최근 통화가 분석에서 빠졌거나 실패했을 때. 안 받은 통화는 제외한다.
+            val latest = calls.filter { (it.durationSec ?: 0) > 0 }.maxByOrNull { it.startedAt }
+            if (latest?.state == "ANALYSIS_FAILED") return Failed
+            if (latest?.state == "ANALYSIS_EXCLUDED") return Excluded
             if (!isCurrentWeek) return CurrentWeek
             if (isGuest) return None
             return if (canCall) Call else Family
@@ -109,6 +115,10 @@ fun AnalysisEmptyState(
     )
     val message = when (action) {
         AnalysisEmptyAction.Processing -> "통화 분석을 준비하고 있어요. 해당 통화의 상태를 확인할 수 있어요."
+        AnalysisEmptyAction.Excluded ->
+            "부모님이 말씀하신 시간이 짧았거나(20초 미만), 두 분의 최신 동의가 확인되지 않으면 분석에서 빠져요. " +
+                "조금 더 길게 통화해 보시고, 계속되면 동의 상태를 확인해 주세요."
+        AnalysisEmptyAction.Failed -> "분석 중 문제가 생겼어요. 잠시 뒤 다시 확인해 주세요."
         AnalysisEmptyAction.Family -> "가족을 초대하거나 받은 초대 코드를 입력해 첫 통화를 시작해 보세요."
         AnalysisEmptyAction.Call -> "가족과 통화하고 분석에 동의하면 대화 내용을 다시 살펴볼 수 있어요."
         AnalysisEmptyAction.CurrentWeek -> "선택한 기간에는 분석된 통화가 없어요. 이번 주 기록을 확인해 보세요."
@@ -116,6 +126,7 @@ fun AnalysisEmptyState(
     }
     val actionTitle = when (action) {
         AnalysisEmptyAction.Processing -> "통화 상태 보기"
+        AnalysisEmptyAction.Excluded, AnalysisEmptyAction.Failed -> "다시 확인하기"
         AnalysisEmptyAction.Family -> "가족 초대하기"
         AnalysisEmptyAction.Call -> "${contact?.name ?: "가족"}에게 전화하기"
         AnalysisEmptyAction.CurrentWeek -> "이번 주 보기"
@@ -123,14 +134,24 @@ fun AnalysisEmptyState(
     }
 
     EmptyState(
-        symbol = if (action == AnalysisEmptyAction.Processing) "waveform" else "doc.text.magnifyingglass",
-        title = if (action == AnalysisEmptyAction.Processing) "통화를 분석하고 있어요." else "아직 분석된 데이터가 없어요.",
+        symbol = when (action) {
+            AnalysisEmptyAction.Processing -> "waveform"
+            AnalysisEmptyAction.Excluded, AnalysisEmptyAction.Failed -> "exclamationmark.circle"
+            else -> "doc.text.magnifyingglass"
+        },
+        title = when (action) {
+            AnalysisEmptyAction.Processing -> "통화를 분석하고 있어요."
+            AnalysisEmptyAction.Excluded -> "이 통화는 분석에서 제외됐어요."
+            AnalysisEmptyAction.Failed -> "통화 분석에 실패했어요."
+            else -> "아직 분석된 데이터가 없어요."
+        },
         modifier = modifier,
         message = message,
         actionTitle = actionTitle,
         action = {
             when (action) {
                 AnalysisEmptyAction.Processing -> showsCalls = true
+                AnalysisEmptyAction.Excluded, AnalysisEmptyAction.Failed -> scope.launch { onRefresh() }
                 AnalysisEmptyAction.Family -> showsFamily = true
                 AnalysisEmptyAction.Call -> {
                     if (contact?.userId != null) onStartCall(contact)

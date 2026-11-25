@@ -32,9 +32,37 @@ class AnalysisEmptyActionTests {
 
     @Test
     fun terminalAndActiveCallsDoNotClaimAnalysisIsPending() {
-        for (state in listOf("ANALYZED", "ANALYSIS_EXCLUDED", "ANALYSIS_FAILED", "ACTIVE")) {
+        for (state in listOf("ANALYZED", "ACTIVE")) {
             assertEquals(state, AnalysisEmptyAction.Call, resolve(calls = listOf(call(state, recorded = true))))
         }
+    }
+
+    // 가장 최근에 이어진 통화가 분석에서 빠졌거나 실패했으면 「데이터 없음」 대신 그 사유를 알린다
+    @Test
+    fun latestConnectedCallExplainsExclusionOrFailure() {
+        assertEquals(AnalysisEmptyAction.Excluded, resolve(calls = listOf(call("ANALYSIS_EXCLUDED", recorded = true))))
+        assertEquals(AnalysisEmptyAction.Failed, resolve(calls = listOf(call("ANALYSIS_FAILED", recorded = true))))
+        // 지난 주를 보고 있어도 사유가 먼저다
+        assertEquals(
+            AnalysisEmptyAction.Excluded,
+            resolve(calls = listOf(call("ANALYSIS_EXCLUDED", recorded = true)), isCurrentWeek = false),
+        )
+    }
+
+    @Test
+    fun onlyTheLatestConnectedCallDecidesTheReason() {
+        val earlier = Instant.parse("2026-11-20T03:00:00Z")
+        val later = Instant.parse("2026-11-21T03:00:00Z")
+        // 그 뒤에 분석된 통화가 있으면 옛 제외 통화는 사유가 아니다
+        assertEquals(
+            AnalysisEmptyAction.Call,
+            resolve(calls = listOf(call("ANALYSIS_EXCLUDED", recorded = true, startedAt = earlier), call("ANALYZED", recorded = true, startedAt = later))),
+        )
+        // 받지 않은 통화(0초)는 세지 않는다
+        assertEquals(
+            AnalysisEmptyAction.Call,
+            resolve(calls = listOf(call("ANALYSIS_EXCLUDED", recorded = false, durationSec = 0))),
+        )
     }
 
     @Test
@@ -67,8 +95,8 @@ class AnalysisEmptyActionTests {
         isGuest: Boolean = false,
     ) = AnalysisEmptyAction.resolve(calls, canCall, isCurrentWeek, isGuest)
 
-    private fun call(state: String, recorded: Boolean) = CallSummaryDto(
+    private fun call(state: String, recorded: Boolean, startedAt: Instant = Instant.now(), durationSec: Int = 30) = CallSummaryDto(
         callId = "call", parentId = "parent", state = state, timeSlot = null,
-        startedAt = Instant.now(), endedAt = Instant.now(), durationSec = 30, recorded = recorded, parentSpeechSec = null,
+        startedAt = startedAt, endedAt = startedAt, durationSec = durationSec, recorded = recorded, parentSpeechSec = null,
     )
 }
