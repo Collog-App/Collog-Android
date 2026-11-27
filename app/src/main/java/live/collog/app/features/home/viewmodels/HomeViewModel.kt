@@ -99,8 +99,22 @@ class HomeViewModel {
 
         // 리포트 공유는 통화 기록과 따로 켜고 끈다
         if (healthSummary == null && !reportNotShared) return
-        val report = ApiError.accessCheck { api.report(parentId) } ?: return
+        var premiumRequired = false
+        val report = ApiError.accessCheck {
+            try {
+                api.report(parentId)
+            } catch (e: ApiError.Server) {
+                premiumRequired = e.isPremiumRequired
+                throw e
+            }
+        }
         if (this.generation != generation) return
+        // 그사이 무료가 돼 리포트가 막혔으면(402) 보이던 리포트 카드를 내린다
+        if (premiumRequired) {
+            refresh(environment, contact)
+            return
+        }
+        if (report == null) return
         if (report.first != reportNotShared) refresh(environment, contact)
     }
 

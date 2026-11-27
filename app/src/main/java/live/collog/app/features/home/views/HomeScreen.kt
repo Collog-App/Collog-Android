@@ -88,6 +88,7 @@ import live.collog.app.features.timeline.views.components.ViewerAvatar
 import live.collog.app.features.timeline.views.components.viewerRelationText
 import live.collog.app.shared.components.chart.TrendSeries
 import live.collog.app.shared.components.chart.smoothPath
+import live.collog.app.shared.components.emptystate.AnalysisEmptyAction
 import live.collog.app.shared.components.emptystate.AnalysisEmptyState
 import live.collog.app.shared.components.emptystate.EmptyState
 import live.collog.app.shared.components.emptystate.NotSharedEmptyState
@@ -309,8 +310,17 @@ private fun HomeRoot(viewModel: HomeViewModel) {
                 } else if (viewModel.reportNotShared) {
                     // 가족이 리포트 공유를 꺼 뒀다(403): 오류 카드·다시 시도 대신 리포트·타임라인과 같은 안내
                     NotSharedEmptyState(Modifier.specCard(padding = 15.dp))
-                } else if (viewModel.reportPremiumRequired) {
-                    // 무료라 리포트가 막혔다(402): 리포트 기반 카드를 숨긴다(잠금 안내는 리포트·타임라인 탭에서)
+                } else if (
+                    viewModel.reportPremiumRequired &&
+                    !AnalysisEmptyAction.resolve(
+                        viewModel.recentCalls,
+                        canCall = selectedContact?.isCallable == true,
+                        isCurrentWeek = true,
+                        isGuest = isGuest,
+                    ).explainsCall
+                ) {
+                    // 무료라 리포트가 막혔다(402): 리포트 기반 카드와 「아직 분석된 데이터가 없어요」 류는 숨긴다.
+                    // 가장 최근 통화의 사정(분석 중·제외·분량 초과·실패)은 아래 안내로 그대로 알린다
                 } else {
                     AnalysisEmptyState(
                         onStartCall = { contact ->

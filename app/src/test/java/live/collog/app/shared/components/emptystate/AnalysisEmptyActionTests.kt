@@ -58,6 +58,21 @@ class AnalysisEmptyActionTests {
         assertEquals(AnalysisEmptyAction.Excluded, resolve(calls = listOf(consent)))
     }
 
+    // 리포트가 잠긴(402) 홈·「나」를 고른 리포트에서도 보이는 안내는 통화 사정을 알리는 것뿐이다
+    @Test
+    fun onlyCallReasonsExplainTheLatestCall() {
+        val explaining = AnalysisEmptyAction.entries.filter { it.explainsCall }
+        assertEquals(
+            listOf(
+                AnalysisEmptyAction.Processing,
+                AnalysisEmptyAction.Excluded,
+                AnalysisEmptyAction.QuotaExceeded,
+                AnalysisEmptyAction.Failed,
+            ),
+            explaining,
+        )
+    }
+
     @Test
     fun onlyTheLatestConnectedCallDecidesTheReason() {
         val earlier = Instant.parse("2026-11-20T03:00:00Z")

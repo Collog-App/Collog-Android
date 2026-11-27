@@ -55,6 +55,9 @@ enum class AnalysisEmptyAction {
     CurrentWeek,
     None;
 
+    /** 가장 최근 통화의 사정(분석 중·제외·분량 초과·실패)을 알리는 안내. 「아직 분석된 데이터가 없어요」 류가 아니다. */
+    val explainsCall: Boolean get() = this in listOf(Processing, Excluded, QuotaExceeded, Failed)
+
     companion object {
         fun resolve(
             calls: List<CallSummaryDto>,

@@ -210,6 +210,27 @@ class HomeSummaryTests {
     }
 
     @Test
+    fun quietCheckDropsTheReportCardOnceTheFamilyBecomesFree() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            serveHome(fixture, openCalls, openReport)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+            assertNotNull(model.healthSummary)
+
+            serveHome(fixture, openCalls, premiumRequired)
+            model.refreshCalls(fixture.environment, contact = mom)
+
+            assertTrue(model.reportPremiumRequired)
+            assertNull(model.healthSummary)
+            assertNull(model.healthFeedback)
+            assertNull(model.loadError)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
     fun homeDropsWhatItShowedOnceSharingIsTurnedOff() = runTest {
         val fixture = TestEnvironment()
         try {
