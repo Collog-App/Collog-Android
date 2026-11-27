@@ -282,7 +282,12 @@ private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAcce
         // "나"를 골랐는데 기록이 없으면 전화·초대를 권하지 않는다(가족이 없을 때만 아래 초대 안내).
         // 분석 중이거나 가장 최근 통화가 분석에서 빠졌으면·실패했으면 그 사유는 가족과 같이 알린다
         val selfAction = AnalysisEmptyAction.resolve(page.calls, canCall = false, isCurrentWeek = page.offset == 0, isGuest = false)
-        val explainsCall = selfAction in listOf(AnalysisEmptyAction.Processing, AnalysisEmptyAction.Excluded, AnalysisEmptyAction.Failed)
+        val explainsCall = selfAction in listOf(
+            AnalysisEmptyAction.Processing,
+            AnalysisEmptyAction.Excluded,
+            AnalysisEmptyAction.QuotaExceeded,
+            AnalysisEmptyAction.Failed,
+        )
         if (isSelfSelected && contacts.isNotEmpty() && !explainsCall) {
             EmptyState(
                 symbol = "doc.text.magnifyingglass",

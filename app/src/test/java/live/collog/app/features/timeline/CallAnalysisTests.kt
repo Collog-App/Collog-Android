@@ -176,13 +176,20 @@ class CallAnalysisTests {
         }
     }
 
-    private fun callJson(state: String) =
-        """{"callId":"c1","parentId":"mom","childId":"me","state":"$state","startedAt":"2026-11-05T03:00:00Z","durationSec":600,"recorded":true}"""
+    private fun callJson(state: String, reason: String? = null) =
+        """{"callId":"c1","parentId":"mom","childId":"me","state":"$state","startedAt":"2026-11-05T03:00:00Z","durationSec":600,"recorded":true""" +
+            (reason?.let { ""","recordingDisabledReason":"$it"""" } ?: "") + "}"
 
-    private fun serve(fixture: TestEnvironment, state: String, extractionStatus: Int = 200, extractionBody: String? = null) {
+    private fun serve(
+        fixture: TestEnvironment,
+        state: String,
+        extractionStatus: Int = 200,
+        extractionBody: String? = null,
+        reason: String? = null,
+    ) {
         fixture.respond = { request ->
             when (request.url.encodedPath) {
-                "/v1/calls/c1" -> 200 to callJson(state)
+                "/v1/calls/c1" -> 200 to callJson(state, reason)
                 "/v1/calls/c1/extraction" ->
                     if (extractionBody != null) {
                         extractionStatus to extractionBody
@@ -246,6 +253,25 @@ class CallAnalysisTests {
         failed.load(fixture.environment)
         assertEquals("통화를 분석하지 못했어요.", (failed.state as CallAnalysisState.Unavailable).title)
         assertFalse(fixture.paths.any { it.endsWith("/extraction") })
+    }
+
+    @Test
+    fun callSkippedAfterTheMonthlyQuotaIsMarkedWithoutAskingForResults() = withFixture { fixture ->
+        serve(fixture, "ANALYSIS_EXCLUDED", reason = "ANALYSIS_QUOTA_EXCEEDED")
+        val model = CallAnalysisViewModel("c1")
+        model.load(fixture.environment)
+
+        val state = model.state as CallAnalysisState.Unavailable
+        assertTrue(state.quotaExceeded)
+        assertEquals("분석 대상에서 제외된 통화예요.", state.title)
+        // 음성 인식을 돌리지 않아 요약이 없으니 묻지 않는다
+        assertEquals(listOf("/v1/calls/c1"), fixture.paths.toList())
+
+        // 다른 사유로 빠진 통화는 지금처럼
+        serve(fixture, "ANALYSIS_EXCLUDED", reason = "CONSENT_DENIED")
+        val other = CallAnalysisViewModel("c1")
+        other.load(fixture.environment)
+        assertFalse((other.state as CallAnalysisState.Unavailable).quotaExceeded)
     }
 
     @Test

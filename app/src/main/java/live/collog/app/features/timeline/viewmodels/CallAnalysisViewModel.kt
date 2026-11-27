@@ -37,6 +37,10 @@ class CallAnalysisViewModel(private val callId: String) {
         when (call.state) {
             "ANALYZED" -> Unit
             "ANALYSIS_EXCLUDED" -> {
+                // 분량을 다 써서 빠진 통화는 음성 인식을 돌리지 않아 요약·응급 안내가 없다
+                if (call.isAnalysisQuotaExceeded) {
+                    return CallAnalysisState.Unavailable("분석 대상에서 제외된 통화예요.", null, quotaExceeded = true)
+                }
                 // 짧아서 제외된 통화도 서버가 요약이나 응급 안내를 남길 수 있다. 없거나(404)·실패하면 조용히 넘긴다.
                 val extraction = try {
                     api.extraction(callId)

@@ -38,6 +38,7 @@ import live.collog.app.features.timeline.viewmodels.CallAnalysisViewModel
 import live.collog.app.shared.components.HealthCrossBadge
 import live.collog.app.shared.components.emptystate.EmptyState
 import live.collog.app.shared.navigation.LocalNavigationManager
+import live.collog.app.shared.services.BillingText
 import live.collog.app.shared.ui.CollogProgress
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogType
@@ -85,10 +86,14 @@ fun CallAnalysisScreen(callId: String) {
                 state.summary?.let {
                     CallSummaryBlock(it, Modifier.padding(horizontal = Spacing.screenHorizontal).padding(top = 27.dp))
                 }
+                // 분량 초과: 무료면 「프리미엄 알아보기」, 이미 프리미엄이면 버튼 없이 다음 달 안내
+                val isFreePlan = environment.billing.isLocked
                 EmptyState(
                     symbol = "exclamationmark.circle",
                     title = state.title,
-                    message = state.message,
+                    message = if (state.quotaExceeded) BillingText.quotaMessage(isFreePlan) else state.message,
+                    actionTitle = if (state.quotaExceeded && isFreePlan) BillingText.LEARN_MORE else null,
+                    action = environment.billing::presentPaywall,
                 )
             }
             is CallAnalysisState.Error -> EmptyState(

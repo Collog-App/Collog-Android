@@ -50,6 +50,14 @@ class AnalysisEmptyActionTests {
     }
 
     @Test
+    fun latestCallSkippedAfterTheMonthlyQuotaHasItsOwnReason() {
+        val skipped = call("ANALYSIS_EXCLUDED", recorded = true).copy(recordingDisabledReason = "ANALYSIS_QUOTA_EXCEEDED")
+        assertEquals(AnalysisEmptyAction.QuotaExceeded, resolve(calls = listOf(skipped)))
+        val consent = call("ANALYSIS_EXCLUDED", recorded = true).copy(recordingDisabledReason = "CONSENT_DENIED")
+        assertEquals(AnalysisEmptyAction.Excluded, resolve(calls = listOf(consent)))
+    }
+
+    @Test
     fun onlyTheLatestConnectedCallDecidesTheReason() {
         val earlier = Instant.parse("2026-11-20T03:00:00Z")
         val later = Instant.parse("2026-11-21T03:00:00Z")

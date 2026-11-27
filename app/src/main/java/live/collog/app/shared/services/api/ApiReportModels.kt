@@ -72,11 +72,16 @@ data class CallSummaryDto(
     val durationSec: Int? = null,
     val recorded: Boolean,
     val parentSpeechSec: Int? = null,
+    /** 분석하지 않은 이유(서버 코드). 예: `ANALYSIS_QUOTA_EXCEEDED`(이번 달 분석 시간을 다 씀). */
+    val recordingDisabledReason: String? = null,
 ) {
     val id: String get() = callId
     val isAnalyzed: Boolean get() = state == "ANALYZED"
     /** 받는 사람이 20초 넘게 말하지 않아 목소리·건강 분석에서 빠진 통화. 요약은 있을 수 있다. */
     val isAnalysisExcluded: Boolean get() = state == "ANALYSIS_EXCLUDED"
+    /** 가족의 이번 달 분석 시간을 다 써서 분석하지 않은 통화(결제 1차). 음성 인식을 돌리지 않아 요약도 없다. */
+    val isAnalysisQuotaExceeded: Boolean
+        get() = isAnalysisExcluded && recordingDisabledReason == "ANALYSIS_QUOTA_EXCEEDED"
 }
 
 @Serializable

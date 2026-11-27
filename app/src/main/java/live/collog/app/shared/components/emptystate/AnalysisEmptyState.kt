@@ -33,6 +33,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import live.collog.app.config.LocalAppEnvironment
 import live.collog.app.features.home.models.FamilyContact
+import live.collog.app.shared.services.BillingText
 import live.collog.app.shared.services.api.CallSummaryDto
 import live.collog.app.shared.ui.PendingPort
 import live.collog.app.shared.ui.designsystem.CollogColors
@@ -45,6 +46,9 @@ import live.collog.app.shared.ui.pressable
 enum class AnalysisEmptyAction {
     Processing,
     Excluded,
+
+    /** 가족의 이번 달 분석 시간을 다 써서 가장 최근 통화를 분석하지 않았다(결제 1차). */
+    QuotaExceeded,
     Failed,
     Family,
     Call,
@@ -62,7 +66,7 @@ enum class AnalysisEmptyAction {
             // 실제로 통화가 이어진(1초 이상) 가장 최근 통화가 분석에서 빠졌거나 실패했을 때. 안 받은 통화는 제외한다.
             val latest = calls.filter { (it.durationSec ?: 0) > 0 }.maxByOrNull { it.startedAt }
             if (latest?.state == "ANALYSIS_FAILED") return Failed
-            if (latest?.state == "ANALYSIS_EXCLUDED") return Excluded
+            if (latest?.state == "ANALYSIS_EXCLUDED") return if (latest.isAnalysisQuotaExceeded) QuotaExceeded else Excluded
             if (!isCurrentWeek) return CurrentWeek
             if (isGuest) return None
             return if (canCall) Call else Family
@@ -106,6 +110,8 @@ fun AnalysisEmptyState(
     val scope = rememberCoroutineScope()
     var showsFamily by remember { mutableStateOf(false) }
     var showsCalls by remember { mutableStateOf(false) }
+    // 분량 초과 안내: 무료면 「프리미엄 알아보기」, 이미 프리미엄이면 버튼 없이 다음 달 안내
+    val isFreePlan = environment.billing.isLocked
 
     val action = AnalysisEmptyAction.resolve(
         calls = calls,
@@ -118,6 +124,7 @@ fun AnalysisEmptyState(
         AnalysisEmptyAction.Excluded ->
             "부모님이 말씀하신 시간이 짧았거나(20초 미만), 두 분의 최신 동의가 확인되지 않으면 분석에서 빠져요. " +
                 "조금 더 길게 통화해 보시고, 계속되면 동의 상태를 확인해 주세요."
+        AnalysisEmptyAction.QuotaExceeded -> BillingText.quotaMessage(isFreePlan)
         AnalysisEmptyAction.Failed -> "분석 중 문제가 생겼어요. 잠시 뒤 다시 확인해 주세요."
         AnalysisEmptyAction.Family -> "가족을 초대하거나 받은 초대 코드를 입력해 첫 통화를 시작해 보세요."
         AnalysisEmptyAction.Call -> "가족과 통화하고 분석에 동의하면 대화 내용을 다시 살펴볼 수 있어요."
@@ -127,6 +134,7 @@ fun AnalysisEmptyState(
     val actionTitle = when (action) {
         AnalysisEmptyAction.Processing -> "통화 상태 보기"
         AnalysisEmptyAction.Excluded, AnalysisEmptyAction.Failed -> "다시 확인하기"
+        AnalysisEmptyAction.QuotaExceeded -> if (isFreePlan) BillingText.LEARN_MORE else null
         AnalysisEmptyAction.Family -> "가족 초대하기"
         AnalysisEmptyAction.Call -> "${contact?.name ?: "가족"}에게 전화하기"
         AnalysisEmptyAction.CurrentWeek -> "이번 주 보기"
@@ -136,12 +144,12 @@ fun AnalysisEmptyState(
     EmptyState(
         symbol = when (action) {
             AnalysisEmptyAction.Processing -> "waveform"
-            AnalysisEmptyAction.Excluded, AnalysisEmptyAction.Failed -> "exclamationmark.circle"
+            AnalysisEmptyAction.Excluded, AnalysisEmptyAction.QuotaExceeded, AnalysisEmptyAction.Failed -> "exclamationmark.circle"
             else -> "doc.text.magnifyingglass"
         },
         title = when (action) {
             AnalysisEmptyAction.Processing -> "통화를 분석하고 있어요."
-            AnalysisEmptyAction.Excluded -> "이 통화는 분석에서 제외됐어요."
+            AnalysisEmptyAction.Excluded, AnalysisEmptyAction.QuotaExceeded -> "이 통화는 분석에서 제외됐어요."
             AnalysisEmptyAction.Failed -> "통화 분석에 실패했어요."
             else -> "아직 분석된 데이터가 없어요."
         },
@@ -152,6 +160,7 @@ fun AnalysisEmptyState(
             when (action) {
                 AnalysisEmptyAction.Processing -> showsCalls = true
                 AnalysisEmptyAction.Excluded, AnalysisEmptyAction.Failed -> scope.launch { onRefresh() }
+                AnalysisEmptyAction.QuotaExceeded -> environment.billing.presentPaywall()
                 AnalysisEmptyAction.Family -> showsFamily = true
                 AnalysisEmptyAction.Call -> {
                     if (contact?.userId != null) onStartCall(contact)

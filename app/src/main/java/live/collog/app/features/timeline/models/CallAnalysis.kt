@@ -51,6 +51,8 @@ sealed interface CallAnalysisState {
         val message: String?,
         val safetyNotice: String? = null,
         val summary: String? = null,
+        /** 가족의 이번 달 분석 시간을 다 써서 분석하지 않은 통화. 안내 문구·버튼은 화면이 지금 요금제로 고른다. */
+        val quotaExceeded: Boolean = false,
     ) : CallAnalysisState
 
     data class Error(val message: String) : CallAnalysisState
