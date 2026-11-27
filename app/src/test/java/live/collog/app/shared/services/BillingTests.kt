@@ -19,7 +19,7 @@ import org.junit.Test
 class BillingTests {
     private class FakeStore(override val isAvailable: Boolean = true) : PurchaseStore {
         val identified = mutableListOf<String>()
-        var price: String? = "₩13,000"
+        var price: StorePrice? = StorePrice("₩13,000", 13_000_000_000, "KRW")
         var priceRequests = 0
         var outcome = PurchaseOutcome.Purchased
         var failure: Exception? = null
@@ -30,7 +30,7 @@ class BillingTests {
             identified += userId
         }
 
-        override suspend fun monthlyPrice(userId: String): String? {
+        override suspend fun monthlyPrice(userId: String): StorePrice? {
             priceRequests += 1
             return price
         }
@@ -71,7 +71,7 @@ class BillingTests {
         "analysis":{"month":"2026-11","usedSec":600,"limitSec":15000,"resetsAt":"2026-12-01T00:00:00+09:00"}}"""
     private val paidByMe =
         """{"billingEnabled":true,"plan":"PREMIUM","source":"PAID","trialEndsAt":null,
-        "paidUntil":"2026-12-27T03:00:00+00:00","paidByMe":true,"payerName":null,
+        "paidUntil":"2026-12-27T03:00:00+00:00","paidByMe":true,"willRenew":true,"payerName":null,
         "analysis":{"month":"2026-11","usedSec":0,"limitSec":15000,"resetsAt":"2026-12-01T00:00:00+09:00"}}"""
     private val paidByMom =
         """{"billingEnabled":true,"plan":"PREMIUM","source":"PAID","trialEndsAt":null,
@@ -163,14 +163,30 @@ class BillingTests {
     }
 
     @Test
-    fun storeIsIdentifiedWithTheServerUserIdOnlyWhenTheKeyExists() {
+    fun storeIsTurnedOnWithTheServerUserIdOnlyAfterTheServerEnablesBilling() {
         val store = FakeStore()
         withFixture(store) { fixture, billing ->
+            var body = disabled
+            fixture.respond = { 200 to body }
+            // 결제가 꺼져 있으면 키가 있어도 RevenueCat 에 사용자 ID 를 보내지 않는다
             billing.identify(fixture.environment)
+            billing.load(fixture.environment)
+            billing.preparePaywall(fixture.environment)
+            billing.purchase(activity, fixture.environment)
+            billing.restore(fixture.environment)
+            assertTrue(store.identified.isEmpty())
+            assertEquals(0, store.priceRequests)
+            assertEquals(0, store.purchases)
+            assertEquals(0, store.restores)
+
+            body = trial
+            billing.load(fixture.environment)
             assertEquals(listOf("me"), store.identified)
         }
         val noKey = FakeStore(isAvailable = false)
         withFixture(noKey) { fixture, billing ->
+            fixture.respond = { 200 to trial }
+            billing.load(fixture.environment)
             billing.identify(fixture.environment)
             assertTrue(noKey.identified.isEmpty())
         }
@@ -199,6 +215,9 @@ class BillingTests {
     fun cancelledPurchaseLeavesTheScreenAsItWas() {
         val store = FakeStore().apply { outcome = PurchaseOutcome.Cancelled }
         withFixture(store) { fixture, billing ->
+            fixture.respond = { 200 to free }
+            billing.load(fixture.environment)
+            fixture.requests.clear()
             fixture.respond = { fail("취소하면 서버에 묻지 않는다"); error("unreachable") }
             billing.purchase(activity, fixture.environment)
             assertEquals(1, store.purchases)
@@ -211,6 +230,9 @@ class BillingTests {
     fun failedPurchaseShowsTheContractMessage() {
         val store = FakeStore().apply { failure = IllegalStateException("store") }
         withFixture(store) { fixture, billing ->
+            fixture.respond = { 200 to free }
+            billing.load(fixture.environment)
+            fixture.requests.clear()
             billing.purchase(activity, fixture.environment)
             assertEquals("결제를 마치지 못했어요. 잠시 뒤 다시 시도해 주세요.", billing.message)
             assertTrue(fixture.requests.isEmpty())
@@ -223,6 +245,8 @@ class BillingTests {
         val store = FakeStore()
         withFixture(store) { fixture, billing ->
             fixture.respond = { 200 to paidByMe }
+            billing.load(fixture.environment)
+            fixture.paths.clear()
             billing.restore(fixture.environment)
             assertEquals(listOf("/v1/account/entitlement/refresh"), fixture.paths.toList())
             assertTrue(billing.entitlement!!.paidByMe)
@@ -257,14 +281,15 @@ class BillingTests {
             fixture.respond = { 200 to free }
             billing.preparePaywall(fixture.environment)
             billing.preparePaywall(fixture.environment)
-            assertEquals("₩13,000", billing.price)
+            // 원화는 스토어 문자열(「₩13,000」) 대신 「13,000원」
+            assertEquals("13,000원", billing.price)
             assertEquals(1, store.priceRequests)
         }
     }
 
     @Test
     fun familyPaidBySomeoneElseHidesThePurchaseButton() {
-        val content = BillingText.paywall(decode(paidByMom), storeAvailable = true, price = "₩13,000", isLoadingPrice = false)
+        val content = BillingText.paywall(decode(paidByMom), storeAvailable = true, price = "13,000원", isLoadingPrice = false)
         assertEquals("엄마님 덕분에 가족 모두 프리미엄을 쓰고 있어요", content.status)
         assertFalse(content.showsPurchase)
         assertFalse(content.showsPreparing)
@@ -273,18 +298,40 @@ class BillingTests {
 
     @Test
     fun myOwnSubscriptionShowsTheNextBillingDay() {
-        val content = BillingText.paywall(decode(paidByMe), storeAvailable = true, price = "₩13,000", isLoadingPrice = false)
+        val content = BillingText.paywall(decode(paidByMe), storeAvailable = true, price = "13,000원", isLoadingPrice = false)
         assertEquals("프리미엄 이용 중 · 다음 결제 12월 27일", content.status)
         assertFalse(content.showsPurchase)
+        assertNull(content.price)
         assertTrue(content.showsRestore)
+
+        // 해지해 둔 구독은 다음 결제 대신 끝나는 날
+        val cancelled = decode(paidByMe.replace("\"willRenew\":true", "\"willRenew\":false"))
+        assertEquals(
+            "프리미엄 이용 중 · 12월 27일까지",
+            BillingText.paywall(cancelled, storeAvailable = true, price = "13,000원", isLoadingPrice = false).status,
+        )
+    }
+
+    @Test
+    fun paidFamilyWithoutAPayerNameStillHidesThePurchaseButton() {
+        val unnamed = decode(paidByMom.replace("\"payerName\":\"엄마\"", "\"payerName\":null"))
+        val content = BillingText.paywall(unnamed, storeAvailable = true, price = "13,000원", isLoadingPrice = false)
+        assertEquals("가족 모두 프리미엄을 쓰고 있어요", content.status)
+        assertFalse(content.showsPurchase)
+    }
+
+    @Test
+    fun wonPricesAreWrittenInKoreanAndOtherCurrenciesAsTheStoreSays() {
+        assertEquals("13,000원", BillingText.price(StorePrice("₩13,000", 13_000_000_000, "KRW")))
+        assertEquals("$9.99", BillingText.price(StorePrice("$9.99", 9_990_000, "USD")))
     }
 
     @Test
     fun trialOffersThePurchaseWithTheStorePrice() {
         val entitlement = decode(trial)
-        val ready = BillingText.paywall(entitlement, storeAvailable = true, price = "₩13,000", isLoadingPrice = false)
+        val ready = BillingText.paywall(entitlement, storeAvailable = true, price = "13,000원", isLoadingPrice = false)
         assertEquals("무료 체험 중 · 12월 15일까지", ready.status)
-        assertEquals("월 ₩13,000", ready.price)
+        assertEquals("월 13,000원", ready.price)
         assertTrue(ready.showsPurchase)
         assertFalse(ready.showsPreparing)
 

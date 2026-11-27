@@ -23,8 +23,8 @@ interface PurchaseStore {
     /** 로그인한 서버 사용자 ID 로 SDK 를 맞춘다: 처음이면 configure, 다른 ID 면 logIn. logOut 은 부르지 않는다. */
     suspend fun identify(userId: String)
 
-    /** offering `default` 의 월 상품 가격(스토어가 만든 문자열). 상품이 없으면 null. */
-    suspend fun monthlyPrice(userId: String): String?
+    /** offering `default` 의 월 상품 가격. 상품이 없으면 null. */
+    suspend fun monthlyPrice(userId: String): StorePrice?
 
     /** 월 상품을 산다. 사용자가 취소하면 [PurchaseOutcome.Cancelled], 그 밖의 실패는 던진다. */
     suspend fun purchase(activity: Activity, userId: String): PurchaseOutcome
@@ -36,7 +36,7 @@ interface PurchaseStore {
     object Unavailable : PurchaseStore {
         override val isAvailable: Boolean = false
         override suspend fun identify(userId: String) = Unit
-        override suspend fun monthlyPrice(userId: String): String? = null
+        override suspend fun monthlyPrice(userId: String): StorePrice? = null
         override suspend fun purchase(activity: Activity, userId: String): PurchaseOutcome =
             throw IllegalStateException("결제를 쓸 수 없는 빌드예요")
         override suspend fun restore(userId: String) = throw IllegalStateException("결제를 쓸 수 없는 빌드예요")
@@ -45,10 +45,14 @@ interface PurchaseStore {
 
 enum class PurchaseOutcome { Purchased, Cancelled }
 
+/** 스토어 상품 가격. [formatted]는 스토어가 만든 문자열(Play 원화는 「₩13,000」). */
+data class StorePrice(val formatted: String, val amountMicros: Long, val currencyCode: String)
+
 /**
  * 결제 1차(`private/billing_contract.md` §3): 가족 요금제(서버 값), 결제 화면 상태, 구매·복원.
  * 잠금·버튼 판단은 서버 `GET /v1/account/entitlement` 값만 쓴다(가족 결제·체험은 서버만 안다).
- * 앱 전체에서 하나다(AppEnvironment). 둘러보기에서는 서버도 SDK 도 쓰지 않는다.
+ * SDK 는 서버가 결제를 켰다고(`billingEnabled`) 답했을 때만 켠다: 꺼져 있으면 키가 있는 빌드라도 RevenueCat 에
+ * 사용자 ID 를 보내지 않는다. 앱 전체에서 하나다(AppEnvironment). 둘러보기에서는 서버도 SDK 도 쓰지 않는다.
  */
 class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
     /** 지금 계정의 요금제. 아직 모르거나 서버에 API 가 없으면 null(결제 꺼짐과 같게 아무것도 막지 않는다). */
@@ -57,7 +61,7 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
     var isPaywallPresented by mutableStateOf(false)
         private set
 
-    /** 결제 화면의 월 가격. null 이면 아직 모르거나 상품이 없다. */
+    /** 결제 화면의 월 가격(「13,000원」). null 이면 아직 모르거나 상품이 없다. */
     var price by mutableStateOf<String?>(null)
         private set
     var isLoadingPrice by mutableStateOf(false)
@@ -88,9 +92,9 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         isPaywallPresented = false
     }
 
-    /** 앱 시작 때 SDK 를 지금 계정으로 맞춘다. 실패해도 구매할 때 다시 맞춘다. */
+    /** 결제가 켜져 있으면 SDK 를 지금 계정으로 맞춘다(처음이면 configure). 실패해도 구매할 때 다시 맞춘다. */
     suspend fun identify(environment: AppEnvironment) {
-        if (!store.isAvailable) return
+        if (!store.isAvailable || !isEnabled) return
         val userId = userId(environment) ?: return
         try {
             store.identify(userId)
@@ -101,7 +105,7 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         }
     }
 
-    /** 앱 시작·앞으로 올 때·결제 화면을 열 때. 실패하면 아는 값을 그대로 둔다. */
+    /** 앱 시작·앞으로 올 때·결제 화면을 열 때. 실패하면 아는 값을 그대로 둔다. 결제가 켜져 있으면 SDK 도 맞춘다. */
     suspend fun load(environment: AppEnvironment) {
         val userId = userId(environment) ?: return
         val generation = generation
@@ -114,6 +118,7 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         }
         if (generation != this.generation || environment.session.user?.id != userId) return
         entitlement = loaded
+        identify(environment)
     }
 
     fun presentPaywall() {
@@ -126,16 +131,16 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         message = null
     }
 
-    /** 결제 화면이 열릴 때: 요금제를 다시 읽고, 스토어 가격을 아직 모르면 받는다. */
+    /** 결제 화면이 열릴 때: 요금제를 다시 읽고(켜져 있으면 SDK 도 켠다), 스토어 가격을 아직 모르면 받는다. */
     suspend fun preparePaywall(environment: AppEnvironment) {
         load(environment)
-        if (!store.isAvailable || price != null || isLoadingPrice) return
+        if (!store.isAvailable || !isEnabled || price != null || isLoadingPrice) return
         val userId = userId(environment) ?: return
         val generation = generation
         isLoadingPrice = true
         try {
             val loaded = store.monthlyPrice(userId)
-            if (generation == this.generation) price = loaded
+            if (generation == this.generation) price = loaded?.let(BillingText::price)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -166,7 +171,7 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         failure: String,
         action: suspend (userId: String) -> Boolean,
     ) {
-        if (isWorking || !store.isAvailable) return
+        if (isWorking || !store.isAvailable || !isEnabled) return
         val userId = userId(environment) ?: return
         val generation = generation
         isWorking = true
@@ -254,6 +259,10 @@ object BillingText {
 
     fun day(instant: Instant): String = dayFormatter.format(instant.atZone(zone))
 
+    /** 가격 줄에 쓰는 가격: 원화면 「13,000원」, 다른 통화면 스토어 문자열 그대로. */
+    fun price(price: StorePrice): String =
+        if (price.currencyCode == "KRW") String.format(Locale.US, "%,d원", price.amountMicros / 1_000_000) else price.formatted
+
     /** 분량을 다 써서 분석하지 않은 통화의 안내. 무료면 「프리미엄 알아보기」 버튼을 같이 둔다. */
     fun quotaMessage(isFreePlan: Boolean): String = if (isFreePlan) QUOTA_FREE else QUOTA_PREMIUM
 
@@ -278,11 +287,17 @@ object BillingText {
     ): PaywallContent {
         val payerName = entitlement?.payerName?.takeIf { it.isNotBlank() }
         // 이미 프리미엄을 결제로 쓰고 있으면 구매 버튼을 두지 않는다(가족 안 중복 결제 방지)
+        val paidUntil = entitlement?.paidUntil
         val paidStatus = when {
             entitlement == null -> null
-            entitlement.paidByMe -> "프리미엄 이용 중" + (entitlement.paidUntil?.let { " · 다음 결제 ${day(it)}" } ?: "")
+            // 해지해 둔 구독(willRenew 가 true 가 아님)은 다음 결제 대신 끝나는 날
+            entitlement.paidByMe -> "프리미엄 이용 중" + when {
+                paidUntil == null -> ""
+                entitlement.willRenew == true -> " · 다음 결제 ${day(paidUntil)}"
+                else -> " · ${day(paidUntil)}까지"
+            }
             payerName != null -> "${payerName}님 덕분에 가족 모두 프리미엄을 쓰고 있어요"
-            entitlement.isPaid -> "프리미엄 이용 중"
+            entitlement.isPaid -> "가족 모두 프리미엄을 쓰고 있어요"
             else -> null
         }
         if (paidStatus != null) {

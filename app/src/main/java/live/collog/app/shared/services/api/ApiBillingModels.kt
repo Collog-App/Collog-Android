@@ -18,6 +18,8 @@ data class EntitlementDto(
     @Serializable(with = CollogInstantSerializer::class) val paidUntil: Instant? = null,
     /** 내가 결제한 구독이 유효한가. */
     val paidByMe: Boolean = false,
+    /** [paidUntil]을 준 구독이 자동 갱신 중인가. 유료가 아니면 null. */
+    val willRenew: Boolean? = null,
     /** 가족 중 다른 사람이 결제했으면 그 사람 이름. */
     val payerName: String? = null,
     val analysis: AnalysisUsageDto? = null,

@@ -316,8 +316,7 @@ private fun MainTabs(
         healthLink.ensureStatus(environment)
         healthLink.syncIfDue(environment)
     }
-    // 결제: 로그인한 계정으로 RevenueCat 을 맞추고(둘러보기는 쓰지 않음), 처음 보일 때와 앱으로 돌아올 때마다 요금제를 읽는다
-    LaunchedEffect(Unit) { environment.billing.identify(environment) }
+    // 결제: 처음 보일 때와 앱으로 돌아올 때마다 요금제를 읽는다. 서버가 결제를 켰을 때만 그 계정으로 RevenueCat 을 켠다(둘러보기는 쓰지 않음)
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { scope.launch { environment.billing.load(environment) } }
     // 가족에 들어가거나 빠지면 요금제가 바뀐다(가족 중 한 명이 결제하면 가족 모두 프리미엄)
     OnChange(environment.session.familyId) { _, _ -> scope.launch { environment.billing.load(environment) } }

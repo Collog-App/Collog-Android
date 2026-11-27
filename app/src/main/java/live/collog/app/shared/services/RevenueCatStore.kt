@@ -13,7 +13,7 @@ import com.revenuecat.purchases.awaitPurchase
 import com.revenuecat.purchases.awaitRestore
 
 /**
- * RevenueCat Android SDK 11.4.3. appUserID 는 로그인한 서버 사용자 ID(UUID)다.
+ * RevenueCat Android SDK 11.4.3. appUserID 는 로그인한 서버 사용자 ID(UUID)다. 결제가 켜졌을 때만 [Billing]이 부른다.
  * 처음 쓸 때 그 ID 로 configure 하고, 이미 configure 됐는데 계정이 바뀌었으면 logIn 한다. logOut 은 부르지 않는다(익명 ID 가 생김).
  * [apiKey]가 비어 있으면 아무것도 하지 않는다.
  */
@@ -31,7 +31,8 @@ class RevenueCatStore(context: Context, private val apiKey: String) : PurchaseSt
         }
     }
 
-    override suspend fun monthlyPrice(userId: String): String? = monthlyPackage(userId)?.product?.price?.formatted
+    override suspend fun monthlyPrice(userId: String): StorePrice? =
+        monthlyPackage(userId)?.product?.price?.let { StorePrice(it.formatted, it.amountMicros, it.currencyCode) }
 
     override suspend fun purchase(activity: Activity, userId: String): PurchaseOutcome {
         val monthly = monthlyPackage(userId) ?: throw IllegalStateException("구독 상품이 없어요")
