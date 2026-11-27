@@ -91,6 +91,15 @@ class BillingTests {
     private val activity = Activity()
 
     @Test
+    fun onlyAPlayPublicKeyTurnsTheStoreOn() {
+        assertTrue(RevenueCatStore.isUsableKey("goog_abc123"))
+        // 빈 값·App Store 키·시험 스토어 키는 키가 없는 것과 같다
+        assertFalse(RevenueCatStore.isUsableKey(""))
+        assertFalse(RevenueCatStore.isUsableKey("appl_abc123"))
+        assertFalse(RevenueCatStore.isUsableKey("test_abc123"))
+    }
+
+    @Test
     fun entitlementIsReadInTheContractShape() {
         val entitlement = decode(trial)
         assertTrue(entitlement.billingEnabled)

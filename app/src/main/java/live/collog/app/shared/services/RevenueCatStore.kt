@@ -16,12 +16,12 @@ import com.revenuecat.purchases.awaitRestore
 /**
  * RevenueCat Android SDK 11.4.3. appUserID 는 로그인한 서버 사용자 ID(UUID)다. 결제가 켜졌을 때만 [Billing]이 부른다.
  * 처음 쓸 때 그 ID 로 configure 하고, 이미 configure 됐는데 계정이 바뀌었으면 logIn 한다. logOut 은 부르지 않는다(익명 ID 가 생김).
- * [apiKey]가 비어 있으면 아무것도 하지 않는다.
+ * [apiKey]가 Play 공개 키(`goog_…`)가 아니면(비었거나 다른 스토어·시험용 키) 키가 없는 것과 같게 아무것도 하지 않는다.
  */
 class RevenueCatStore(context: Context, private val apiKey: String) : PurchaseStore {
     private val context = context.applicationContext
 
-    override val isAvailable: Boolean get() = apiKey.isNotBlank()
+    override val isAvailable: Boolean get() = isUsableKey(apiKey)
 
     override suspend fun identify(userId: String) {
         if (!isAvailable) return
@@ -64,8 +64,11 @@ class RevenueCatStore(context: Context, private val apiKey: String) : PurchaseSt
         return offering.monthly
     }
 
-    private companion object {
-        const val OFFERING_ID = "default"
-        const val ENTITLEMENT_ID = "premium"
+    companion object {
+        private const val OFFERING_ID = "default"
+        private const val ENTITLEMENT_ID = "premium"
+
+        /** Play 공개 SDK 키만 쓴다. */
+        internal fun isUsableKey(apiKey: String): Boolean = apiKey.startsWith("goog_")
     }
 }
