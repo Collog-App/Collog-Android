@@ -18,6 +18,7 @@ kakao = "2.26.0"
 healthConnect = "1.1.0"
 firebaseBom = "35.1.0"
 googleServices = "4.5.0"
+revenuecat = "11.4.3"
 junit = "4.13.2"
 
 [libraries]
@@ -50,6 +51,7 @@ androidx-core-telecom = { group = "androidx.core", name = "core-telecom", versio
 androidx-health-connect-client = { group = "androidx.health.connect", name = "connect-client", version.ref = "healthConnect" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
+revenuecat-purchases = { group = "com.revenuecat.purchases", name = "purchases", version.ref = "revenuecat" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

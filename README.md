@@ -54,6 +54,8 @@ JDK 17과 Android SDK Platform 37이 필요합니다.
 
 Google 로그인과 FCM은 Firebase 설정 파일 `app/google-services.json`을 씁니다. 이 파일은 저장소에 넣지 않습니다. 파일 없이도 빌드와 체험 모드는 되지만, 전화 수신(FCM)은 동작하지 않습니다. Google 로그인만 켜려면 `-Pcollog.googleWebClientId=<웹 클라이언트 ID>`를 붙입니다.
 
+구독 결제(RevenueCat)는 `local.properties`의 `revenuecat.apiKey=goog_…`(공개 SDK 키, 비밀 아님)를 씁니다. 없으면 SDK를 켜지 않고 결제 화면에는 「결제를 준비하고 있어요」만 보입니다(CI도 키 없이 돕니다).
+
 서버의 Google 로그인(`/v1/auth/google`)과 FCM 발송은 [Collog-Server#6](https://github.com/Collog-App/Collog-Server/pull/6)에서 검토 중이며 아직 `main`에 들어가지 않았습니다.
 
 <br />

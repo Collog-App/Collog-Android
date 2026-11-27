@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -26,6 +28,13 @@ android {
         val kakaoNativeAppKey = providers.gradleProperty("collog.kakaoNativeAppKey").getOrElse("")
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoNativeAppKey\"")
         manifestPlaceholders["kakaoScheme"] = "kakao$kakaoNativeAppKey"
+        // RevenueCat 공개 SDK 키(goog_…, 비밀 아님). local.properties 의 revenuecat.apiKey, 없으면 빈 값 —
+        // 비어 있으면 SDK 를 켜지 않고 결제 화면은 「결제를 준비하고 있어요」만 보인다(CI 는 키 없이 돈다).
+        val localProperties = Properties().apply {
+            rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+        }
+        val revenueCatApiKey = localProperties.getProperty("revenuecat.apiKey", "")
+        buildConfigField("String", "REVENUECAT_API_KEY", "\"$revenueCatApiKey\"")
     }
 
     buildTypes {
@@ -85,6 +94,7 @@ dependencies {
     implementation(libs.androidx.fragment)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+    implementation(libs.revenuecat.purchases)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
