@@ -375,7 +375,8 @@ private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAcce
             } else if (page.reportNotShared) {
                 NotSharedEmptyState()
             } else if (page.reportPremiumRequired) {
-                PremiumLockedState(onLearnMore = billing::presentPaywall)
+                // 서버가 402 로 막았다. 결제 진입점은 요금제가 무료로 확인됐을 때만
+                PremiumLockedState(onLearnMore = if (isLocked) billing::presentPaywall else null)
             } else if (page.report.state == ReportState.Empty) {
                 if (timelineError != null) ErrorContent(timelineError, page.offset) else EmptyAnalysisContent(page)
             } else {

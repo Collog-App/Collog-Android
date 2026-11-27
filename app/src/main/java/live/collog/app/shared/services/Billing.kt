@@ -97,7 +97,10 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
     /** 결제가 켜져 있다: 설정 「구독 관리」 줄과 결제 화면 진입점을 보인다. */
     val isEnabled: Boolean get() = entitlement?.billingEnabled == true
 
-    /** 결제가 켜져 있고 가족이 무료: 리포트·타임라인 탭이 잠긴다. */
+    /**
+     * 결제가 켜져 있고 가족이 무료: 리포트·타임라인 탭이 잠긴다. 「프리미엄 알아보기」 같은 결제 진입점도 이때만 보인다
+     * (요금제를 모르거나 이미 프리미엄이면 버튼을 두지 않는다).
+     */
     val isLocked: Boolean get() = entitlement?.isFreePlan == true
 
     /** 계정이 바뀌거나 로그아웃했다. 진행 중이던 요청의 결과는 버린다. */
@@ -308,27 +311,45 @@ object BillingText {
     const val LOCKED_TITLE = "주간 리포트와 타임라인은 프리미엄에서 볼 수 있어요"
     const val LOCKED_MESSAGE = "통화가 쌓이면 부모님의 변화를 한 주, 한 달 단위로 모아 보여드려요."
 
-    const val QUOTA_FREE = "이번 달 무료 분석 시간(40분)을 다 써서 이 통화는 분석하지 않았어요."
     const val QUOTA_PREMIUM = "이번 달 분석 시간을 다 썼어요. 다음 달 1일에 다시 채워져요."
+
+    /** 요금제를 모를 때의 중립 문구(서버 `recordingDisabledMessage` 와 같다). */
+    const val QUOTA_UNKNOWN = "이번 달 분석 시간을 다 써서 이 통화는 분석하지 않았어요."
+
+    /** 무료 한도를 서버가 주지 않을 때(약속 `FREE_ANALYSIS_SECONDS` 기본 40분). */
+    private const val DEFAULT_FREE_MINUTES = 40
 
     private val zone: ZoneId = ZoneId.of("Asia/Seoul")
     private val dayFormatter = DateTimeFormatter.ofPattern("M월 d일", Locale.KOREAN)
 
     fun day(instant: Instant): String = dayFormatter.format(instant.atZone(zone))
 
+    /** 「~까지」에 쓰는 날: 끝나는 시각 1초 전의 한국 날짜(마지막으로 쓸 수 있는 날). 자정에 끝나면 그 전날이다. */
+    fun untilDay(instant: Instant): String = day(instant.minusSeconds(1))
+
     /** 가격 줄에 쓰는 가격: 원화면 「13,000원」, 다른 통화면 스토어 문자열 그대로. */
     fun price(price: StorePrice): String =
         if (price.currencyCode == "KRW") String.format(Locale.US, "%,d원", price.amountMicros / 1_000_000) else price.formatted
 
-    /** 분량을 다 써서 분석하지 않은 통화의 안내. 무료면 「프리미엄 알아보기」 버튼을 같이 둔다. */
-    fun quotaMessage(isFreePlan: Boolean): String = if (isFreePlan) QUOTA_FREE else QUOTA_PREMIUM
+    /**
+     * 분량을 다 써서 분석하지 않은 통화의 안내. 무료면 서버가 준 무료 한도로 적고(「프리미엄 알아보기」 버튼을 같이 둔다),
+     * 프리미엄이거나 결제가 꺼져 있으면 다음 달 안내, 요금제를 모르면 중립 문구.
+     */
+    fun quotaMessage(entitlement: EntitlementDto?): String = when {
+        entitlement == null -> QUOTA_UNKNOWN
+        entitlement.isFreePlan -> {
+            val minutes = entitlement.analysis?.limitSec?.let { it / 60 } ?: DEFAULT_FREE_MINUTES
+            "이번 달 무료 분석 시간(${minutes}분)을 다 써서 이 통화는 분석하지 않았어요."
+        }
+        else -> QUOTA_PREMIUM
+    }
 
     /** 설정 「구독 관리」 줄의 지금 요금제. */
     fun plan(entitlement: EntitlementDto): String {
         val trialEndsAt = entitlement.trialEndsAt
         return when {
             entitlement.plan == "FREE" -> "무료"
-            entitlement.isTrial && trialEndsAt != null -> "프리미엄 · 무료 체험 ${day(trialEndsAt)}까지"
+            entitlement.isTrial && trialEndsAt != null -> "프리미엄 · 무료 체험 ${untilDay(trialEndsAt)}까지"
             else -> "프리미엄"
         }
     }
@@ -351,7 +372,7 @@ object BillingText {
             entitlement.paidByMe -> "프리미엄 이용 중" + when {
                 paidUntil == null -> ""
                 entitlement.willRenew == true -> " · 다음 결제 ${day(paidUntil)}"
-                else -> " · ${day(paidUntil)}까지"
+                else -> " · ${untilDay(paidUntil)}까지"
             }
             payerName != null -> "${payerName}님 덕분에 가족 모두 프리미엄을 쓰고 있어요"
             entitlement.isPaid -> "가족 모두 프리미엄을 쓰고 있어요"
@@ -361,7 +382,7 @@ object BillingText {
             return PaywallContent(paidStatus, null, showsPurchase = false, showsPreparing = false, showsRestore = storeAvailable, isLoading = false)
         }
         val trialEndsAt = entitlement?.trialEndsAt
-        val status = if (entitlement?.isTrial == true && trialEndsAt != null) "무료 체험 중 · ${day(trialEndsAt)}까지" else null
+        val status = if (entitlement?.isTrial == true && trialEndsAt != null) "무료 체험 중 · ${untilDay(trialEndsAt)}까지" else null
         val loading = storeAvailable && price == null && isLoadingPrice
         val purchasable = storeAvailable && price != null
         return PaywallContent(

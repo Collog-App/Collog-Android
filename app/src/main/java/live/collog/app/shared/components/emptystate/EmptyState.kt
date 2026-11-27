@@ -80,9 +80,12 @@ fun NotSharedEmptyState(modifier: Modifier = Modifier) {
     )
 }
 
-/** 결제가 켜져 있고 가족이 무료라 리포트·타임라인 탭이 잠겼다(서버 402 도 같은 화면). 버튼은 결제 화면을 연다. */
+/**
+ * 결제가 켜져 있고 가족이 무료라 리포트·타임라인 탭이 잠겼다(서버 402 도 같은 화면). 버튼은 결제 화면을 연다.
+ * [onLearnMore]가 null 이면(요금제를 아직 모름) 버튼 없이 안내만.
+ */
 @Composable
-fun PremiumLockedState(onLearnMore: () -> Unit, modifier: Modifier = Modifier) {
+fun PremiumLockedState(onLearnMore: (() -> Unit)?, modifier: Modifier = Modifier) {
     EmptyState(
         symbol = "lock.fill",
         title = BillingText.LOCKED_TITLE,

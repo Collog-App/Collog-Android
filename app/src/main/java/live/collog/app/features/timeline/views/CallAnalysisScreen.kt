@@ -86,12 +86,12 @@ fun CallAnalysisScreen(callId: String) {
                 state.summary?.let {
                     CallSummaryBlock(it, Modifier.padding(horizontal = Spacing.screenHorizontal).padding(top = 27.dp))
                 }
-                // 분량 초과: 무료면 「프리미엄 알아보기」, 이미 프리미엄이면 버튼 없이 다음 달 안내
+                // 분량 초과: 무료로 확인됐을 때만 「프리미엄 알아보기」(프리미엄은 다음 달 안내, 요금제를 모르면 중립 문구)
                 val isFreePlan = environment.billing.isLocked
                 EmptyState(
                     symbol = "exclamationmark.circle",
                     title = state.title,
-                    message = if (state.quotaExceeded) BillingText.quotaMessage(isFreePlan) else state.message,
+                    message = if (state.quotaExceeded) BillingText.quotaMessage(environment.billing.entitlement) else state.message,
                     actionTitle = if (state.quotaExceeded && isFreePlan) BillingText.LEARN_MORE else null,
                     action = environment.billing::presentPaywall,
                 )

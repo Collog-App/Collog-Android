@@ -493,8 +493,40 @@ class BillingTests {
 
     @Test
     fun quotaMessageDependsOnThePlan() {
-        assertEquals("이번 달 무료 분석 시간(40분)을 다 써서 이 통화는 분석하지 않았어요.", BillingText.quotaMessage(isFreePlan = true))
-        assertEquals("이번 달 분석 시간을 다 썼어요. 다음 달 1일에 다시 채워져요.", BillingText.quotaMessage(isFreePlan = false))
+        assertEquals("이번 달 무료 분석 시간(40분)을 다 써서 이 통화는 분석하지 않았어요.", BillingText.quotaMessage(decode(free)))
+        // 무료 한도는 서버 값으로 적고, 없으면 40분
+        val longer = decode(free).let { it.copy(analysis = it.analysis!!.copy(limitSec = 3000)) }
+        assertEquals("이번 달 무료 분석 시간(50분)을 다 써서 이 통화는 분석하지 않았어요.", BillingText.quotaMessage(longer))
+        assertEquals(
+            "이번 달 무료 분석 시간(40분)을 다 써서 이 통화는 분석하지 않았어요.",
+            BillingText.quotaMessage(decode(free).copy(analysis = null)),
+        )
+        assertEquals("이번 달 분석 시간을 다 썼어요. 다음 달 1일에 다시 채워져요.", BillingText.quotaMessage(decode(trial)))
+        // 요금제를 모르면 버튼 없이 중립 문구
+        assertEquals("이번 달 분석 시간을 다 써서 이 통화는 분석하지 않았어요.", BillingText.quotaMessage(null))
+    }
+
+    @Test
+    fun untilDatesNameTheLastUsableKoreanDay() {
+        // 한국 시간 12월 15일 0시에 끝나면 마지막으로 쓸 수 있는 날은 14일이다. 다음 결제일은 그날 그대로
+        val midnight = Instant.parse("2026-12-14T15:00:00Z")
+        assertEquals("12월 14일", BillingText.untilDay(midnight))
+        assertEquals("12월 15일", BillingText.day(midnight))
+        val trialAtMidnight = decode(trial).copy(trialEndsAt = midnight)
+        assertEquals("프리미엄 · 무료 체험 12월 14일까지", BillingText.plan(trialAtMidnight))
+        assertEquals(
+            "무료 체험 중 · 12월 14일까지",
+            BillingText.paywall(trialAtMidnight, storeAvailable = true, price = "13,000원", isLoadingPrice = false).status,
+        )
+        val renewing = decode(paidByMe).copy(paidUntil = midnight)
+        assertEquals(
+            "프리미엄 이용 중 · 다음 결제 12월 15일",
+            BillingText.paywall(renewing, storeAvailable = true, price = null, isLoadingPrice = false).status,
+        )
+        assertEquals(
+            "프리미엄 이용 중 · 12월 14일까지",
+            BillingText.paywall(renewing.copy(willRenew = false), storeAvailable = true, price = null, isLoadingPrice = false).status,
+        )
     }
 
     @Test

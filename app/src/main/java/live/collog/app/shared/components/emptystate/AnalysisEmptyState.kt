@@ -113,7 +113,7 @@ fun AnalysisEmptyState(
     val scope = rememberCoroutineScope()
     var showsFamily by remember { mutableStateOf(false) }
     var showsCalls by remember { mutableStateOf(false) }
-    // 분량 초과 안내: 무료면 「프리미엄 알아보기」, 이미 프리미엄이면 버튼 없이 다음 달 안내
+    // 분량 초과 안내: 무료로 확인됐을 때만 「프리미엄 알아보기」(프리미엄은 다음 달 안내, 요금제를 모르면 중립 문구)
     val isFreePlan = environment.billing.isLocked
 
     val action = AnalysisEmptyAction.resolve(
@@ -127,7 +127,7 @@ fun AnalysisEmptyState(
         AnalysisEmptyAction.Excluded ->
             "부모님이 말씀하신 시간이 짧았거나(20초 미만), 두 분의 최신 동의가 확인되지 않으면 분석에서 빠져요. " +
                 "조금 더 길게 통화해 보시고, 계속되면 동의 상태를 확인해 주세요."
-        AnalysisEmptyAction.QuotaExceeded -> BillingText.quotaMessage(isFreePlan)
+        AnalysisEmptyAction.QuotaExceeded -> BillingText.quotaMessage(environment.billing.entitlement)
         AnalysisEmptyAction.Failed -> "분석 중 문제가 생겼어요. 잠시 뒤 다시 확인해 주세요."
         AnalysisEmptyAction.Family -> "가족을 초대하거나 받은 초대 코드를 입력해 첫 통화를 시작해 보세요."
         AnalysisEmptyAction.Call -> "가족과 통화하고 분석에 동의하면 대화 내용을 다시 살펴볼 수 있어요."
