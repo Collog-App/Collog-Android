@@ -63,6 +63,27 @@ class ReportViewEventTests {
     }
 
     @Test
+    fun aLockedReportTabRecordsNoView() = withFixture { fixture ->
+        val environment = fixture.environment
+        environment.family.refresh(environment)
+        val base = fixture.respond
+        fixture.respond = { request ->
+            if (request.url.encodedPath == "/v1/account/entitlement") {
+                200 to """{"billingEnabled":true,"plan":"FREE","source":null}"""
+            } else {
+                base(request)
+            }
+        }
+        environment.billing.load(environment)
+        val model = TimelineViewModel(selectedTabIndex = 0)
+
+        model.recordReportView(environment, AppEventCode.DIRECT)
+        model.recordPendingReportView(environment)
+
+        assertTrue(fixture.views().isEmpty())
+    }
+
+    @Test
     fun refreshesAndWeekPagingRecordNothing() = withFixture { fixture ->
         val environment = fixture.environment
         environment.family.refresh(environment)

@@ -348,6 +348,37 @@ class TimelineViewModelTests {
     }
 
     @Test
+    fun lockedTabsDoNotLoadAnythingUntilUnlocked() = withFixture { fixture ->
+        serve(fixture)
+        val base = fixture.respond
+        var plan = "FREE"
+        fixture.respond = { request ->
+            if (request.path() == "/v1/account/entitlement") {
+                200 to """{"billingEnabled":true,"plan":"$plan","source":${if (plan == "FREE") "null" else "\"PAID\""}}"""
+            } else {
+                base(request)
+            }
+        }
+        fixture.environment.billing.load(fixture.environment)
+        assertTrue(fixture.environment.billing.isLocked)
+        fixture.paths.clear()
+
+        val model = TimelineViewModel()
+        model.refresh(fixture.environment)
+        model.loadPage(-1, fixture.environment)
+        model.revalidateSharing(fixture.environment)
+        assertTrue(fixture.paths.isEmpty())
+        assertFalse(model.page(0).isLoaded)
+
+        // 잠금이 풀리면 화면이 다시 부른다
+        plan = "PREMIUM"
+        fixture.environment.billing.load(fixture.environment)
+        model.refresh(fixture.environment, forceReload = true)
+        assertTrue(model.page(0).isLoaded)
+        assertEquals(1, model.page(0).entries.size)
+    }
+
+    @Test
     fun forcedRefreshAfterSharingIsTurnedBackOnDoesNotKeepOtherWeeksNotShared() = withFixture { fixture ->
         serve(fixture)
         val base = fixture.respond

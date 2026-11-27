@@ -98,6 +98,11 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
      */
     fun recordReportView(environment: AppEnvironment, code: String) {
         if (selectedTabIndex != 0) return
+        // 잠긴 탭(무료)은 리포트를 본 것이 아니다
+        if (environment.billing.isLocked) {
+            pendingReportView = null
+            return
+        }
         // 가족 목록을 기다리는 알림 열람(NOTIFICATION)은 그사이 사람을 바꿔도 DIRECT 로 덮지 않는다
         pendingReportView = if (pendingReportView == AppEventCode.NOTIFICATION) AppEventCode.NOTIFICATION else code
         recordPendingReportView(environment)
@@ -106,6 +111,10 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
     /** 가족 목록을 받기 전에 잠깐 고른 "나"로 남기지 않게, 목록을 받은 뒤(가족이 없으면 바로) 보고 있는 사람으로 남긴다. */
     fun recordPendingReportView(environment: AppEnvironment) {
         val code = pendingReportView ?: return
+        if (environment.billing.isLocked) {
+            pendingReportView = null
+            return
+        }
         if (!environment.family.isLoaded) return
         val subjectId = selectedContact(environment)?.userId ?: return
         pendingReportView = null
@@ -114,6 +123,9 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
 
     suspend fun refresh(environment: AppEnvironment, forceReload: Boolean = false) {
         resolveSelection(environment)
+        // 잠긴 탭(결제가 켜져 있고 무료)은 불러오지 않는다. 요금제를 모르면 그대로 불러 리포트의 402 로 잠금을 안다.
+        // 잠금이 풀리면 화면이 다시 부른다
+        if (environment.billing.isLocked) return
         val generation = contentGeneration
 
         if (environment.settings.isGuestMode) {
@@ -145,7 +157,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
      * 바뀌지 않았으면 화면을 건드리지 않게, 지금 주의 리포트와 통화 목록이 열리는지만 조용히 묻는다.
      */
     suspend fun revalidateSharing(environment: AppEnvironment) {
-        if (environment.settings.isGuestMode) return
+        if (environment.settings.isGuestMode || environment.billing.isLocked) return
         val contact = selectedContact(environment)
         val parentId = contact?.userId ?: return
         if (contact.id == SelfContactId) return
@@ -176,6 +188,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
 
     suspend fun loadPage(offset: Int, environment: AppEnvironment, forceReload: Boolean = false) {
         resolveSelection(environment)
+        if (environment.billing.isLocked) return
         val generation = contentGeneration
 
         if (environment.settings.isGuestMode) {
