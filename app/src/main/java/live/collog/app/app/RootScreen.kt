@@ -50,6 +50,7 @@ import live.collog.app.features.auth.views.PassVerificationScreen
 import live.collog.app.features.auth.views.SignUpConditionsScreen
 import live.collog.app.features.auth.views.SignUpScreen
 import live.collog.app.features.auth.views.TermsScreen
+import live.collog.app.features.billing.views.PaywallSheetHost
 import live.collog.app.features.call.models.CallPhase
 import live.collog.app.features.call.services.CallCenter
 import live.collog.app.features.call.services.LocalCallCenter
@@ -291,6 +292,7 @@ private fun MainTabs(
     val environment = LocalAppEnvironment.current
     val healthLink = LocalHealthLink.current
     val family = environment.family
+    val scope = rememberCoroutineScope()
 
     fun syncLauncher() {
         val callable = family.callableContacts
@@ -314,6 +316,11 @@ private fun MainTabs(
         healthLink.ensureStatus(environment)
         healthLink.syncIfDue(environment)
     }
+    // 결제: 로그인한 계정으로 RevenueCat 을 맞추고(둘러보기는 쓰지 않음), 처음 보일 때와 앱으로 돌아올 때마다 요금제를 읽는다
+    LaunchedEffect(Unit) { environment.billing.identify(environment) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { scope.launch { environment.billing.load(environment) } }
+    // 가족에 들어가거나 빠지면 요금제가 바뀐다(가족 중 한 명이 결제하면 가족 모두 프리미엄)
+    OnChange(environment.session.familyId) { _, _ -> scope.launch { environment.billing.load(environment) } }
     OnChange(family.contacts) { _, _ -> syncLauncher() }
     OnChange(family.selectedQuestionTexts) { _, _ -> syncLauncher() }
 
@@ -363,5 +370,7 @@ private fun MainTabs(
 
         // 설정·홈·리포트의 「건강 앱 연결」이 여는 시트. 권한 창 결과를 받으려고 탭 화면에 늘 둔다.
         HealthLinkSheetHost()
+        // 설정 「구독 관리」·잠금 화면·분량 초과 안내가 여는 결제 화면
+        PaywallSheetHost()
     }
 }

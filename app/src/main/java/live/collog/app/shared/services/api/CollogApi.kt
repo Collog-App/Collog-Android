@@ -284,6 +284,13 @@ class CollogApi(val client: CollogApiClient) {
             ApiEndpoint(path = "/v1/account/sharing", method = HttpMethod.PUT, body = body(SharingBody(shares))),
         ).shares
 
+    /** 가족 요금제와 이번 달 분석 사용량. */
+    suspend fun entitlement(): EntitlementDto = client.send(ApiEndpoint(path = "/v1/account/entitlement"))
+
+    /** 구매·복원 직후: 서버가 RevenueCat 에서 내 구독을 다시 읽어 저장한 뒤 [entitlement]와 같은 본문을 돌려준다. */
+    suspend fun refreshEntitlement(): EntitlementDto =
+        client.send(ApiEndpoint(path = "/v1/account/entitlement/refresh", method = HttpMethod.POST))
+
     /** Google·OTP 계정은 재인증 본문 없이 삭제된다(Apple만 재인증). */
     suspend fun deleteAccount() {
         client.sendRaw(ApiEndpoint(path = "/v1/account", method = HttpMethod.DELETE))

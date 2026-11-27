@@ -45,6 +45,7 @@ import live.collog.app.features.settings.views.components.SettingsCallout
 import live.collog.app.features.settings.views.components.SettingsCalloutText
 import live.collog.app.shared.navigation.LocalNavigationManager
 import live.collog.app.shared.navigation.LocalTabManager
+import live.collog.app.shared.services.BillingText
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogType
 import live.collog.app.shared.ui.designsystem.Spacing
@@ -133,6 +134,18 @@ private fun SettingsRoot() {
                     SpecNavigationRow("건강 앱 연결", value = healthLink.rowText(environment.session.user?.id)) {
                         healthLink.present()
                     }
+                }
+                // 결제 1차: 결제가 켜져 있을 때만(꺼져 있으면 지금과 같은 앱). 누르면 결제 화면
+                val entitlement = environment.billing.entitlement
+                if (!isGuest && environment.session.isAuthenticated && entitlement?.billingEnabled == true) {
+                    SpecDivider()
+                    SpecCaptionNavigationRow(
+                        "구독 관리",
+                        captions = listOfNotNull(
+                            BillingText.plan(entitlement),
+                            entitlement.analysis?.let { "이번 달 분석 ${BillingText.usage(it)}" },
+                        ),
+                    ) { environment.billing.presentPaywall() }
                 }
             }
 
@@ -237,6 +250,26 @@ private fun SpecNavigationRow(label: String, value: String? = null, onClick: () 
             Text(value, style = specText(Pretendard.Regular, 14f, SpecColors.muted), maxLines = 1)
             Spacer(Modifier.width(8.dp))
         }
+        CollogIcon("chevron.right", size = 18.dp, color = SpecColors.chevron)
+    }
+}
+
+/** 카드 안 한 줄에 설명 줄들을 더한 것: 제목 14/500 + 설명 10/400 muted(토글 줄과 같은 간격) + 꺾쇠. */
+@Composable
+private fun SpecCaptionNavigationRow(label: String, captions: List<String>, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 57.dp)
+            .pressable(onClick = onClick)
+            .padding(start = 15.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(label, style = specText(Pretendard.Medium, 14f), maxLines = 1)
+            captions.forEach { Text(it, style = specText(Pretendard.Regular, 10f, SpecColors.muted)) }
+        }
+        Spacer(Modifier.width(8.dp))
         CollogIcon("chevron.right", size = 18.dp, color = SpecColors.chevron)
     }
 }

@@ -29,6 +29,12 @@ sealed class ApiError(override val message: String) : Exception(message) {
 
     val isConsentRequired: Boolean get() = this is Server && code == "CONSENT_REQUIRED"
 
+    /**
+     * 결제가 켜져 있고 보는 사람의 가족이 무료라 리포트가 막혔다(402 `PREMIUM_REQUIRED`). 403(가족이 공유를 껐다)과 섞지 않는다.
+     * 코드가 빠져 와도(서버 기본값 `REQUEST_FAILED`) 402 는 이 뜻 하나라 상태 코드로만 가른다.
+     */
+    val isPremiumRequired: Boolean get() = this is Server && status == 402
+
     companion object {
         /** 요청이 403 으로 막혔는지(`first`), 열렸다면 그 결과까지(`second`). 다른 실패(연결·서버 오류)로는 알 수 없어 null. iOS `APIError.accessCheck`. */
         suspend fun <T> accessCheck(request: suspend () -> T): Pair<Boolean, T?>? = try {

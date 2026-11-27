@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.setMain
 import live.collog.app.config.AppEnvironment
 import live.collog.app.config.AppSettings
 import live.collog.app.shared.services.AuthSession
+import live.collog.app.shared.services.Billing
 import live.collog.app.shared.services.FamilyStore
 import live.collog.app.shared.services.SessionCredentialStorage
 import live.collog.app.shared.services.api.ApiUser
@@ -96,6 +97,8 @@ class TestEnvironment(
     recordsEvents: Boolean = false,
     /** 이용 기록 저장소. [recordsEvents]일 때만 환경에 넘긴다(아니면 기록하지 않아 다른 테스트의 요청 목록에 섞이지 않는다). */
     val eventPreferences: SharedPreferences = MemoryPreferences(),
+    /** 결제. 기본값은 공개 SDK 키 없는 빌드와 같다(스토어를 쓰지 않는다). */
+    billing: Billing = Billing(),
 ) {
     val preferences = MemoryPreferences()
     val credentials = MemoryCredentials()
@@ -151,6 +154,7 @@ class TestEnvironment(
             settings = AppSettings(preferences, backendBaseUrl = "https://fixture.test"),
             session = session,
             family = FamilyStore(),
+            billing = billing,
             http = http,
             eventPreferences = if (recordsEvents) eventPreferences else null,
             // 자동 보내기는 돌리지 않는다. 테스트가 `events.send()`를 직접 부른다(취소된 범위라 launch 해도 본문이 돌지 않는다).

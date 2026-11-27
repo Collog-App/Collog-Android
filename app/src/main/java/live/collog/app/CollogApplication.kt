@@ -12,8 +12,10 @@ import live.collog.app.features.call.services.CallCenter
 import live.collog.app.features.health.services.HealthConnectSource
 import live.collog.app.features.health.services.HealthLink
 import live.collog.app.shared.services.AuthSession
+import live.collog.app.shared.services.Billing
 import live.collog.app.shared.services.CredentialStore
 import live.collog.app.shared.services.PermissionRequester
+import live.collog.app.shared.services.RevenueCatStore
 import live.collog.app.shared.services.api.CollogApiClient
 import live.collog.app.shared.ui.Haptics
 
@@ -34,6 +36,7 @@ class CollogApplication : Application() {
         environment = AppEnvironment(
             settings = AppSettings(getSharedPreferences("collog.settings", Context.MODE_PRIVATE)),
             session = AuthSession(CredentialStore(this)),
+            billing = Billing(RevenueCatStore(this, BuildConfig.REVENUECAT_API_KEY)),
             eventPreferences = getSharedPreferences("collog.events", Context.MODE_PRIVATE),
         )
         KakaoSignIn.init(this)

@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import live.collog.app.shared.services.AppEventCode
 import live.collog.app.shared.services.AppEventLog
 import live.collog.app.shared.services.AuthSession
+import live.collog.app.shared.services.Billing
 import live.collog.app.shared.services.FamilyStore
 import live.collog.app.shared.services.api.CollogApi
 import live.collog.app.shared.services.api.CollogApiClient
@@ -25,6 +26,8 @@ class AppEnvironment(
     val settings: AppSettings,
     val session: AuthSession,
     val family: FamilyStore = FamilyStore(),
+    /** 가족 요금제와 결제 화면(결제 1차). 테스트 기본값은 SDK 없는 빌드와 같다. */
+    val billing: Billing = Billing(),
     private val http: OkHttpClient = CollogApiClient.DefaultHttp,
     eventPreferences: SharedPreferences? = null,
     eventScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
@@ -51,6 +54,7 @@ class AppEnvironment(
     init {
         session.onAccountChanged = {
             family.reset()
+            billing.reset()
             reportNotifications = emptyList()
         }
         if (!session.isAuthenticated) family.reset()
