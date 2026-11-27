@@ -6,6 +6,7 @@ import com.revenuecat.purchases.Package
 import com.revenuecat.purchases.PurchaseParams
 import com.revenuecat.purchases.Purchases
 import com.revenuecat.purchases.PurchasesConfiguration
+import com.revenuecat.purchases.PurchasesErrorCode
 import com.revenuecat.purchases.PurchasesTransactionException
 import com.revenuecat.purchases.awaitLogIn
 import com.revenuecat.purchases.awaitOfferings
@@ -40,13 +41,18 @@ class RevenueCatStore(context: Context, private val apiKey: String) : PurchaseSt
             Purchases.sharedInstance.awaitPurchase(PurchaseParams.Builder(activity, monthly).build())
             PurchaseOutcome.Purchased
         } catch (e: PurchasesTransactionException) {
-            if (e.userCancelled) PurchaseOutcome.Cancelled else throw e
+            when {
+                e.userCancelled -> PurchaseOutcome.Cancelled
+                e.code == PurchasesErrorCode.PaymentPendingError -> PurchaseOutcome.PaymentPending
+                e.code == PurchasesErrorCode.ProductAlreadyPurchasedError -> PurchaseOutcome.AlreadyOwned
+                else -> throw e
+            }
         }
     }
 
-    override suspend fun restore(userId: String) {
+    override suspend fun restore(userId: String): Boolean {
         identify(userId)
-        Purchases.sharedInstance.awaitRestore()
+        return Purchases.sharedInstance.awaitRestore().entitlements.active.containsKey(ENTITLEMENT_ID)
     }
 
     /** offering `default`(없으면 대시보드의 current)의 `$rc_monthly` 패키지. 구매 전에 사용자를 다시 맞춘다. */
@@ -60,5 +66,6 @@ class RevenueCatStore(context: Context, private val apiKey: String) : PurchaseSt
 
     private companion object {
         const val OFFERING_ID = "default"
+        const val ENTITLEMENT_ID = "premium"
     }
 }

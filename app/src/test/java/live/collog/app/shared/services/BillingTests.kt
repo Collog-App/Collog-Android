@@ -2,6 +2,11 @@ package live.collog.app.shared.services
 
 import android.app.Activity
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import live.collog.app.TestEnvironment
 import live.collog.app.shared.services.api.AnalysisUsageDto
@@ -25,6 +30,7 @@ class BillingTests {
         var failure: Exception? = null
         var purchases = 0
         var restores = 0
+        var restoreHasPremium = true
 
         override suspend fun identify(userId: String) {
             identified += userId
@@ -41,9 +47,10 @@ class BillingTests {
             return outcome
         }
 
-        override suspend fun restore(userId: String) {
+        override suspend fun restore(userId: String): Boolean {
             restores += 1
             failure?.let { throw it }
+            return restoreHasPremium
         }
     }
 
@@ -239,6 +246,107 @@ class BillingTests {
     }
 
     @Test
+    fun purchaseConfirmedButNotYetPaidSaysItIsBeingApplied() = withFixture { fixture, billing ->
+        // refresh 가 200 이어도 아직 유료로 안 보이면(웹훅 전) 반영 중 안내
+        fixture.respond = { 200 to free }
+        billing.load(fixture.environment)
+        billing.purchase(activity, fixture.environment)
+        assertEquals(Billing.PURCHASE_PENDING, billing.notice)
+        assertNull(billing.message)
+    }
+
+    @Test
+    fun pendingPaymentAndAlreadyOwnedHaveTheirOwnWordsAndRereadThePlan() {
+        val store = FakeStore()
+        withFixture(store) { fixture, billing ->
+            fixture.respond = { 200 to free }
+            billing.load(fixture.environment)
+
+            fixture.paths.clear()
+            store.outcome = PurchaseOutcome.PaymentPending
+            billing.purchase(activity, fixture.environment)
+            assertEquals("결제 승인을 기다리고 있어요. 승인되면 자동으로 반영돼요.", billing.notice)
+            assertNull(billing.message)
+            assertEquals(listOf("/v1/account/entitlement"), fixture.paths.toList())
+
+            fixture.paths.clear()
+            store.outcome = PurchaseOutcome.AlreadyOwned
+            billing.purchase(activity, fixture.environment)
+            assertEquals("이미 구매한 구독이 있어요. 구매 복원을 눌러 주세요.", billing.message)
+            assertNull(billing.notice)
+            assertEquals(listOf("/v1/account/entitlement"), fixture.paths.toList())
+        }
+    }
+
+    @Test
+    fun restoreWithoutAnActivePremiumSaysThereIsNothingToRestore() {
+        val store = FakeStore().apply { restoreHasPremium = false }
+        withFixture(store) { fixture, billing ->
+            fixture.respond = { 200 to free }
+            billing.load(fixture.environment)
+            fixture.paths.clear()
+
+            billing.restore(fixture.environment)
+
+            assertEquals("복원할 구매가 없어요.", billing.notice)
+            assertNull(billing.message)
+            assertTrue(fixture.paths.isEmpty())
+            assertTrue(billing.isLocked)
+        }
+    }
+
+    @Test
+    fun aSlowPlanReadStartedEarlierDoesNotOverwriteTheRefreshedPlan() = withFixture { fixture, billing ->
+        fixture.respond = { 200 to free }
+        billing.load(fixture.environment)
+
+        val received = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        fixture.respond = { request ->
+            if (request.url.encodedPath == "/v1/account/entitlement") {
+                received.countDown()
+                release.await(5, TimeUnit.SECONDS)
+                200 to free
+            } else {
+                200 to paidByMe
+            }
+        }
+        // 앱으로 돌아올 때의 GET 이 늦게 오는 사이 구매가 끝나 refresh 가 유료를 받는다
+        val slowRead = CoroutineScope(Dispatchers.Default).launch { billing.load(fixture.environment) }
+        assertTrue(received.await(5, TimeUnit.SECONDS))
+        billing.purchase(activity, fixture.environment)
+        assertTrue(billing.entitlement!!.paidByMe)
+
+        release.countDown()
+        slowRead.join()
+        assertTrue(billing.entitlement!!.paidByMe)
+        assertFalse(billing.isLocked)
+    }
+
+    @Test
+    fun paywallShowsLoadingFromTheStartAndAccountChangeClearsIt() = withFixture { fixture, billing ->
+        val received = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        fixture.respond = {
+            received.countDown()
+            release.await(5, TimeUnit.SECONDS)
+            200 to free
+        }
+        val preparing = CoroutineScope(Dispatchers.Default).launch { billing.preparePaywall(fixture.environment) }
+        assertTrue(received.await(5, TimeUnit.SECONDS))
+        // 요금제를 읽는 동안부터 로딩(「준비하고 있어요」가 먼저 비치지 않게)
+        assertTrue(BillingText.paywall(billing.entitlement, billing.isStoreAvailable, billing.price, billing.isLoadingPrice).isLoading)
+
+        fixture.environment.session.signOut()
+        assertFalse(billing.isLoadingPrice)
+        release.countDown()
+        preparing.join()
+        assertFalse(billing.isLoadingPrice)
+        assertNull(billing.entitlement)
+        assertNull(billing.price)
+    }
+
+    @Test
     fun cancelledPurchaseLeavesTheScreenAsItWas() {
         val store = FakeStore().apply { outcome = PurchaseOutcome.Cancelled }
         withFixture(store) { fixture, billing ->
@@ -259,10 +367,11 @@ class BillingTests {
         withFixture(store) { fixture, billing ->
             fixture.respond = { 200 to free }
             billing.load(fixture.environment)
-            fixture.requests.clear()
+            fixture.paths.clear()
             billing.purchase(activity, fixture.environment)
             assertEquals("결제를 마치지 못했어요. 잠시 뒤 다시 시도해 주세요.", billing.message)
-            assertTrue(fixture.requests.isEmpty())
+            // 결제가 됐을 수도 있어 요금제를 한 번 더 읽는다(refresh 는 부르지 않는다)
+            assertEquals(listOf("/v1/account/entitlement"), fixture.paths.toList())
             assertFalse(billing.isWorking)
         }
     }

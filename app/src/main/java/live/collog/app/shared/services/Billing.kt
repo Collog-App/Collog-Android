@@ -26,11 +26,11 @@ interface PurchaseStore {
     /** offering `default` 의 월 상품 가격. 상품이 없으면 null. */
     suspend fun monthlyPrice(userId: String): StorePrice?
 
-    /** 월 상품을 산다. 사용자가 취소하면 [PurchaseOutcome.Cancelled], 그 밖의 실패는 던진다. */
+    /** 월 상품을 산다. 취소·승인 대기·이미 구매함은 [PurchaseOutcome]으로, 그 밖의 실패는 던진다. */
     suspend fun purchase(activity: Activity, userId: String): PurchaseOutcome
 
-    /** 이 스토어 계정의 구매를 지금 사용자에게 다시 붙인다. 실패하면 던진다. */
-    suspend fun restore(userId: String)
+    /** 이 스토어 계정의 구매를 지금 사용자에게 다시 붙인다. 붙은 뒤 `premium` 이 켜져 있으면 true. 실패하면 던진다. */
+    suspend fun restore(userId: String): Boolean
 
     /** 공개 SDK 키 없이 만든 빌드(CI 등). SDK 를 켜지 않는다. */
     object Unavailable : PurchaseStore {
@@ -39,11 +39,20 @@ interface PurchaseStore {
         override suspend fun monthlyPrice(userId: String): StorePrice? = null
         override suspend fun purchase(activity: Activity, userId: String): PurchaseOutcome =
             throw IllegalStateException("결제를 쓸 수 없는 빌드예요")
-        override suspend fun restore(userId: String) = throw IllegalStateException("결제를 쓸 수 없는 빌드예요")
+        override suspend fun restore(userId: String): Boolean = throw IllegalStateException("결제를 쓸 수 없는 빌드예요")
     }
 }
 
-enum class PurchaseOutcome { Purchased, Cancelled }
+enum class PurchaseOutcome {
+    Purchased,
+    Cancelled,
+
+    /** 결제 승인을 기다린다(보류 결제 수단). 승인되면 웹훅으로 반영된다. */
+    PaymentPending,
+
+    /** 이 스토어 계정에 이미 유효한 구독이 있다(다른 앱 사용자에게 붙었을 수 있다). */
+    AlreadyOwned,
+}
 
 /** 스토어 상품 가격. [formatted]는 스토어가 만든 문자열(Play 원화는 「₩13,000」). */
 data class StorePrice(val formatted: String, val amountMicros: Long, val currencyCode: String)
@@ -79,6 +88,10 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
 
     private var generation = UUID.randomUUID()
 
+    /** 요금제 요청(GET·refresh) 순번. 지금 값보다 나중에 출발한 요청의 결과만 적용한다(느린 GET 이 방금 받은 유료를 덮지 않게). */
+    private var requestSequence = 0L
+    private var appliedSequence = 0L
+
     val isStoreAvailable: Boolean get() = store.isAvailable
 
     /** 결제가 켜져 있다: 설정 「구독 관리」 줄과 결제 화면 진입점을 보인다. */
@@ -92,6 +105,7 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         generation = UUID.randomUUID()
         entitlement = null
         price = null
+        isLoadingPrice = false
         message = null
         notice = null
         isPaywallPresented = false
@@ -114,6 +128,7 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
     suspend fun load(environment: AppEnvironment) {
         val userId = userId(environment) ?: return
         val generation = generation
+        val sequence = ++requestSequence
         val loaded = try {
             environment.api.entitlement()
         } catch (e: CancellationException) {
@@ -121,9 +136,16 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         } catch (e: Exception) {
             return
         }
-        if (generation != this.generation || environment.session.user?.id != userId) return
+        if (apply(loaded, sequence, generation, userId, environment)) identify(environment)
+    }
+
+    /** 같은 계정이고 지금 값보다 나중에 출발한 요청이면 적용한다. */
+    private fun apply(loaded: EntitlementDto, sequence: Long, generation: UUID, userId: String, environment: AppEnvironment): Boolean {
+        if (generation != this.generation || environment.session.user?.id != userId) return false
+        if (sequence <= appliedSequence) return false
+        appliedSequence = sequence
         entitlement = loaded
-        identify(environment)
+        return true
     }
 
     fun presentPaywall() {
@@ -138,14 +160,18 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         notice = null
     }
 
-    /** 결제 화면이 열릴 때: 요금제를 다시 읽고(켜져 있으면 SDK 도 켠다), 스토어 가격을 아직 모르면 받는다. */
+    /**
+     * 결제 화면이 열릴 때: 요금제를 다시 읽고(켜져 있으면 SDK 도 켠다), 스토어 가격을 아직 모르면 받는다.
+     * 요금제를 읽는 동안부터 로딩으로 보인다(그 전에 「준비하고 있어요」가 잠깐 비치지 않게).
+     */
     suspend fun preparePaywall(environment: AppEnvironment) {
-        load(environment)
-        if (!store.isAvailable || !isEnabled || price != null || isLoadingPrice) return
-        val userId = userId(environment) ?: return
+        if (isLoadingPrice) return
         val generation = generation
         isLoadingPrice = true
         try {
+            load(environment)
+            if (!store.isAvailable || !isEnabled || price != null) return
+            val userId = userId(environment) ?: return
             val loaded = store.monthlyPrice(userId)
             if (generation == this.generation) price = loaded?.let(BillingText::price)
         } catch (e: CancellationException) {
@@ -153,30 +179,45 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         } catch (e: Exception) {
             Log.w(TAG, "구독 상품을 불러오지 못했어요", e)
         } finally {
-            isLoadingPrice = false
+            // 그사이 계정이 바뀌었으면 reset 이 이미 내렸고, 새 계정의 로딩을 건드리지 않는다
+            if (generation == this.generation) isLoadingPrice = false
         }
     }
 
     /** 「프리미엄 시작하기」. 사용자가 취소하면 아무 안내 없이 화면을 그대로 둔다. */
     suspend fun purchase(activity: Activity, environment: AppEnvironment) {
-        runStoreAction(environment, PURCHASE_FAILED) { userId ->
-            store.purchase(activity, userId) == PurchaseOutcome.Purchased
+        runStoreAction(environment, PURCHASE_FAILED) { userId, generation ->
+            when (store.purchase(activity, userId)) {
+                PurchaseOutcome.Purchased -> refreshAfterStore(environment, userId, generation)
+                PurchaseOutcome.Cancelled -> Unit
+                PurchaseOutcome.PaymentPending -> {
+                    if (generation == this.generation) notice = PAYMENT_PENDING
+                    load(environment)
+                }
+                PurchaseOutcome.AlreadyOwned -> {
+                    if (generation == this.generation) message = ALREADY_OWNED
+                    load(environment)
+                }
+            }
         }
     }
 
-    /** 「구매 복원」. */
+    /** 「구매 복원」. 붙은 구독이 없으면 그렇다고만 알린다(잠금 판단은 서버 값만). */
     suspend fun restore(environment: AppEnvironment) {
-        runStoreAction(environment, RESTORE_FAILED) { userId ->
-            store.restore(userId)
-            true
+        runStoreAction(environment, RESTORE_FAILED) { userId, generation ->
+            if (store.restore(userId)) {
+                refreshAfterStore(environment, userId, generation)
+            } else if (generation == this.generation) {
+                notice = NOTHING_TO_RESTORE
+            }
         }
     }
 
-    /** 스토어 동작이 끝나면(true) 서버가 RevenueCat 에서 다시 읽은 요금제로 화면을 바꾼다. */
+    /** 구매·복원을 하나씩. 스토어가 실패를 던지면 문구를 보이고, 결제가 됐을 수도 있어 요금제를 한 번 더 읽는다. */
     private suspend fun runStoreAction(
         environment: AppEnvironment,
         failure: String,
-        action: suspend (userId: String) -> Boolean,
+        action: suspend (userId: String, generation: UUID) -> Unit,
     ) {
         if (isWorking || !store.isAvailable || !isEnabled) return
         val userId = userId(environment) ?: return
@@ -185,16 +226,15 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         message = null
         notice = null
         try {
-            val changed = try {
-                action(userId)
+            try {
+                action(userId, generation)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "스토어 동작 실패", e)
                 if (generation == this.generation) message = failure
-                false
+                load(environment)
             }
-            if (changed) refreshAfterStore(environment, userId, generation)
         } finally {
             isWorking = false
         }
@@ -202,9 +242,10 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
 
     /**
      * 구매·복원 직후 `POST …/refresh`. 서버가 RevenueCat 확인에 실패했거나(502 `UPSTREAM_ERROR`) 연결이 끊겼으면
-     * 결제 실패로 보이지 않게 `GET` 으로 한 번 더 읽고, 아직 유료로 안 보이면 반영이 늦다고만 알린다(웹훅이 곧 반영한다).
+     * 결제 실패로 보이지 않게 `GET` 으로 한 번 더 읽는다. 어느 쪽이든 아직 유료로 안 보이면 반영이 늦다고만 알린다(웹훅이 곧 반영한다).
      */
     private suspend fun refreshAfterStore(environment: AppEnvironment, userId: String, generation: UUID) {
+        val sequence = ++requestSequence
         val refreshed = try {
             environment.api.refreshEntitlement()
         } catch (e: CancellationException) {
@@ -213,11 +254,7 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
             null
         }
         if (generation != this.generation || environment.session.user?.id != userId) return
-        if (refreshed != null) {
-            entitlement = refreshed
-            return
-        }
-        load(environment)
+        if (refreshed != null) apply(refreshed, sequence, generation, userId, environment) else load(environment)
         if (generation == this.generation && entitlement?.isPaid != true) notice = PURCHASE_PENDING
     }
 
@@ -231,6 +268,9 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         const val PURCHASE_FAILED = "결제를 마치지 못했어요. 잠시 뒤 다시 시도해 주세요."
         const val RESTORE_FAILED = "구매를 복원하지 못했어요. 잠시 뒤 다시 시도해 주세요."
         const val PURCHASE_PENDING = "결제는 완료됐어요. 반영까지 잠시 걸릴 수 있어요."
+        const val PAYMENT_PENDING = "결제 승인을 기다리고 있어요. 승인되면 자동으로 반영돼요."
+        const val ALREADY_OWNED = "이미 구매한 구독이 있어요. 구매 복원을 눌러 주세요."
+        const val NOTHING_TO_RESTORE = "복원할 구매가 없어요."
     }
 }
 
