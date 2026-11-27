@@ -28,6 +28,8 @@ data class TimelineWeekPage(
     /** 가족이 리포트·타임라인 공유를 꺼 둬 서버가 막았다(403). 오류가 아니라 빈 상태로 보인다. */
     val reportNotShared: Boolean = false,
     val timelineNotShared: Boolean = false,
+    /** 결제가 켜져 있고 보는 사람의 가족이 무료라 서버가 리포트를 막았다(402). 403(공유 꺼짐)과 따로 잠금 화면을 보인다. */
+    val reportPremiumRequired: Boolean = false,
     /** 리포트 「생활 기록」. 못 받았거나(서버 미지원·공유 막힘) 타임라인 탭이면 null 이라 숨긴다. */
     val lifeRecord: LifeRecord? = null,
 ) {

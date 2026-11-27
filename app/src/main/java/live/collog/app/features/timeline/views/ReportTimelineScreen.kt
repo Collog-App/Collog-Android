@@ -70,6 +70,7 @@ import live.collog.app.shared.components.emptystate.AnalysisEmptyAction
 import live.collog.app.shared.components.emptystate.AnalysisEmptyState
 import live.collog.app.shared.components.emptystate.EmptyState
 import live.collog.app.shared.components.emptystate.NotSharedEmptyState
+import live.collog.app.shared.components.emptystate.PremiumLockedState
 import live.collog.app.shared.components.navbar.CollapsingHeaderScrollView
 import live.collog.app.shared.components.navbar.CollapsingLargeTitle
 import live.collog.app.shared.navigation.LocalNavigationManager
@@ -132,6 +133,9 @@ private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAcce
     val healthLink = LocalHealthLink.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val billing = environment.billing
+    // 결제가 켜져 있고 가족이 무료: 리포트·타임라인 본문 대신 잠금 화면(서버 값만 본다)
+    val isLocked = billing.isLocked
 
     val tab = if (initialTabIndex == 0) MainTab.Report else MainTab.Timeline
     val viewModel = remember { TimelineViewModel(selectedTabIndex = initialTabIndex) }
@@ -218,6 +222,14 @@ private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAcce
     // 분석 완료 알림을 받으면(누르지 않고 배너로만 봐도) 이미 불러 둔 리포트를 다시 읽는다
     OnChange(environment.reportDataRevision) { _, _ ->
         scope.launch { viewModel.refresh(environment, forceReload = true) }
+    }
+    // 구매·복원으로 잠금이 풀리면 무료라 막혔던(402) 주를 다시 읽는다
+    OnChange(isLocked) { wasLocked, locked ->
+        if (wasLocked && !locked) scope.launch { viewModel.refresh(environment, forceReload = true) }
+    }
+    // 서버가 리포트를 402 로 막았는데 아는 요금제가 무료가 아니면 요금제를 다시 읽는다(타임라인 탭도 같이 잠기게)
+    OnChange(viewModel.week.reportPremiumRequired) { _, required ->
+        if (required && !isLocked) scope.launch { billing.load(environment) }
     }
     // 가족 목록보다 먼저 그려지면(꺼진 앱에서 리포트 알림을 눌러 바로 이 탭이 열림) 고를 가족이 없어 빈 화면에 머문다.
     // 목록이 오면 다시 고르고 불러온다.
@@ -363,6 +375,8 @@ private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAcce
                 ErrorContent(reportError, page.offset)
             } else if (page.reportNotShared) {
                 NotSharedEmptyState()
+            } else if (page.reportPremiumRequired) {
+                PremiumLockedState(onLearnMore = billing::presentPaywall)
             } else if (page.report.state == ReportState.Empty) {
                 if (timelineError != null) ErrorContent(timelineError, page.offset) else EmptyAnalysisContent(page)
             } else {
@@ -458,12 +472,12 @@ private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAcce
             }
         },
         trailing = { ViewerBadgeChip(viewModel.selectedMember) },
-        sticky = if (tab == MainTab.Timeline) {
+        sticky = if (tab == MainTab.Timeline && !isLocked) {
             { TimelineWeekHeader(viewModel.page(activeVerticalWeek).title) }
         } else {
             null
         },
-        pinnedSticky = if (tab == MainTab.Timeline) {
+        pinnedSticky = if (tab == MainTab.Timeline && !isLocked) {
             {
                 val page = viewModel.page(activeVerticalWeek)
                 TimelineWeekHeader(page.title, rangeText = page.timelineRangeText)
@@ -473,7 +487,9 @@ private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAcce
         },
     ) {
         Column(Modifier.padding(bottom = Spacing.x8), verticalArrangement = Arrangement.spacedBy(Spacing.x3)) {
-            if (tab == MainTab.Timeline) {
+            if (isLocked) {
+                PremiumLockedState(onLearnMore = billing::presentPaywall)
+            } else if (tab == MainTab.Timeline) {
                 // 타임라인 본문에서 옆으로 밀면 이전·다음 사람으로 바뀐다. 리포트는 주차 가로 넘기기가 있어 머리말에서만 바꾼다
                 Column(
                     Modifier.pointerInput(subjects, viewModel.selectedContactId) {

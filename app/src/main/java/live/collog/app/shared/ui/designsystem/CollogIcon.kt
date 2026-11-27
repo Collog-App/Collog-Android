@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Phone
@@ -77,6 +78,7 @@ fun sfSymbol(name: String): ImageVector = when (name) {
     "gearshape.fill" -> Icons.Filled.Settings
     "house.fill" -> Icons.Filled.Home
     "info.circle" -> Icons.Outlined.Info
+    "lock.fill" -> Icons.Filled.Lock
     "mic.fill" -> Icons.Filled.Mic
     "mic.slash.fill" -> Icons.Filled.MicOff
     "moon" -> Icons.Outlined.Bedtime

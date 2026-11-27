@@ -323,6 +323,31 @@ class TimelineViewModelTests {
     }
 
     @Test
+    fun premiumRequiredReportIsALockNotSharingTurnedOffOrAFailure() = withFixture { fixture ->
+        serve(fixture, reportStatus = 402)
+        val base = fixture.respond
+        fixture.respond = { request ->
+            if (request.path().endsWith("/reports")) {
+                402 to """{"code":"PREMIUM_REQUIRED","message":"주간 리포트는 프리미엄에서 볼 수 있어요."}"""
+            } else {
+                base(request)
+            }
+        }
+        val model = TimelineViewModel()
+        model.loadPage(0, fixture.environment)
+
+        val page = model.page(0)
+        assertTrue(page.isLoaded)
+        assertTrue(page.reportPremiumRequired)
+        assertFalse(page.reportNotShared)
+        assertNull(page.reportError)
+        // 통화 목록은 서버가 막지 않는다(타임라인 탭 잠금은 앱이 요금제로 한다)
+        assertFalse(page.timelineNotShared)
+        assertNull(page.timelineError)
+        assertEquals(1, page.entries.size)
+    }
+
+    @Test
     fun forcedRefreshAfterSharingIsTurnedBackOnDoesNotKeepOtherWeeksNotShared() = withFixture { fixture ->
         serve(fixture)
         val base = fixture.respond

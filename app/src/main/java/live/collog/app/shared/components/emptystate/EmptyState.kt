@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import live.collog.app.shared.services.BillingText
 import live.collog.app.shared.ui.designsystem.CollogColors
 import live.collog.app.shared.ui.designsystem.CollogIcon
 import live.collog.app.shared.ui.designsystem.CollogType
@@ -76,5 +77,18 @@ fun NotSharedEmptyState(modifier: Modifier = Modifier) {
         title = "이 가족이 공유하지 않은 항목이에요",
         modifier = modifier,
         message = "가족이 설정의 「가족 공유 데이터 범위」에서 공유를 켜면 볼 수 있어요.",
+    )
+}
+
+/** 결제가 켜져 있고 가족이 무료라 리포트·타임라인 탭이 잠겼다(서버 402 도 같은 화면). 버튼은 결제 화면을 연다. */
+@Composable
+fun PremiumLockedState(onLearnMore: () -> Unit, modifier: Modifier = Modifier) {
+    EmptyState(
+        symbol = "lock.fill",
+        title = BillingText.LOCKED_TITLE,
+        modifier = modifier,
+        message = BillingText.LOCKED_MESSAGE,
+        actionTitle = BillingText.LEARN_MORE,
+        action = onLearnMore,
     )
 }

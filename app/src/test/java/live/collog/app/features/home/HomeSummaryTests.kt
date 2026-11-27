@@ -170,6 +170,45 @@ class HomeSummaryTests {
         }
     }
 
+    private val premiumRequired = 402 to """{"code":"PREMIUM_REQUIRED","message":"주간 리포트는 프리미엄에서 볼 수 있어요."}"""
+
+    @Test
+    fun premiumRequiredReportHidesTheCardsWithoutAnError() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            serveHome(fixture, openCalls, premiumRequired)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+
+            assertTrue(model.reportPremiumRequired)
+            assertFalse(model.reportNotShared)
+            assertNull(model.loadError)
+            assertNull(model.healthSummary)
+            assertNull(model.healthFeedback)
+            assertEquals(1, model.recentCalls.size)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
+    @Test
+    fun quietCheckDoesNotRereadAReportLockedForFreeFamilies() = runTest {
+        val fixture = TestEnvironment()
+        try {
+            serveHome(fixture, openCalls, premiumRequired)
+            val model = HomeViewModel()
+            model.refresh(fixture.environment, contact = mom)
+            fixture.paths.clear()
+
+            model.refreshCalls(fixture.environment, contact = mom)
+
+            assertEquals(listOf("/v1/parents/mom/calls"), fixture.paths.toList())
+            assertTrue(model.reportPremiumRequired)
+        } finally {
+            fixture.cleanUp()
+        }
+    }
+
     @Test
     fun homeDropsWhatItShowedOnceSharingIsTurnedOff() = runTest {
         val fixture = TestEnvironment()

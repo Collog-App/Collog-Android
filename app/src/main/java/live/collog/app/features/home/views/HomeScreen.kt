@@ -198,6 +198,8 @@ private fun HomeRoot(viewModel: HomeViewModel) {
     LaunchedEffect(Unit) { refresh() }
     // 분석 완료 알림을 받으면(누르지 않고 배너로만 봐도) 건강 요약을 다시 읽는다
     OnChange(environment.reportDataRevision) { _, _ -> scope.launch { refresh() } }
+    // 구매·복원으로 잠금이 풀리면 무료라 막혔던(402) 건강 요약을 다시 읽는다
+    OnChange(environment.billing.isLocked) { wasLocked, locked -> if (wasLocked && !locked) scope.launch { refresh() } }
     // 처음 보일 때와 앱으로 돌아올 때마다 불러와 새 날의 추천이 나오게 한다
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         scope.launch { todoViewModel.load(environment) }
@@ -307,6 +309,8 @@ private fun HomeRoot(viewModel: HomeViewModel) {
                 } else if (viewModel.reportNotShared) {
                     // 가족이 리포트 공유를 꺼 뒀다(403): 오류 카드·다시 시도 대신 리포트·타임라인과 같은 안내
                     NotSharedEmptyState(Modifier.specCard(padding = 15.dp))
+                } else if (viewModel.reportPremiumRequired) {
+                    // 무료라 리포트가 막혔다(402): 리포트 기반 카드를 숨긴다(잠금 안내는 리포트·타임라인 탭에서)
                 } else {
                     AnalysisEmptyState(
                         onStartCall = { contact ->

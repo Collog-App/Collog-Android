@@ -311,6 +311,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
                 timelineError = null,
                 reportNotShared = false,
                 timelineNotShared = false,
+                reportPremiumRequired = false,
                 isLoaded = false,
             )
             pages = pages + (offset to page)
@@ -325,7 +326,11 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                page = if (e.isNotShared) page.copy(reportNotShared = true) else page.copy(reportError = e.message)
+                page = when {
+                    e.isNotShared -> page.copy(reportNotShared = true)
+                    e is ApiError && e.isPremiumRequired -> page.copy(reportPremiumRequired = true)
+                    else -> page.copy(reportError = e.message)
+                }
             }
 
             try {

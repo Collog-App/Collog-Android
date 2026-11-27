@@ -41,6 +41,9 @@ class HomeViewModel {
         private set
     var callsNotShared by mutableStateOf(false)
         private set
+    /** 결제가 켜져 있고 가족이 무료라 서버가 리포트를 막았다(402). 리포트 기반 카드를 숨긴다(403 과 따로). */
+    var reportPremiumRequired by mutableStateOf(false)
+        private set
     /** 가족(연락처 id)마다 마지막 통화 시각. 기록이 없거나 못 불러오면 빠진다. */
     var lastCallAt by mutableStateOf<Map<String, Instant>>(emptyMap())
         private set
@@ -88,7 +91,7 @@ class HomeViewModel {
             recentCallsError = null
             val latest = calls.maxOfOrNull { it.startedAt }
             lastCallAt = if (latest != null) lastCallAt + (contact.id to latest) else lastCallAt - contact.id
-            if (calls.count { it.isAnalyzed } != analyzedBefore || (healthSummary == null && !reportNotShared)) {
+            if (calls.count { it.isAnalyzed } != analyzedBefore || (healthSummary == null && !reportNotShared && !reportPremiumRequired)) {
                 refresh(environment, contact)
                 return
             }
@@ -109,6 +112,7 @@ class HomeViewModel {
         recentCallsError = null
         reportNotShared = false
         callsNotShared = false
+        reportPremiumRequired = false
         lastCallAt = emptyMap()
         if (environment.settings.isGuestMode) {
             healthSummary = FamilyHealthSummary.sample(contact)
@@ -166,7 +170,11 @@ class HomeViewModel {
             throw e
         } catch (e: Exception) {
             if (this.generation == generation) {
-                if (e.isNotShared) reportNotShared = true else loadError = e.message
+                when {
+                    e.isNotShared -> reportNotShared = true
+                    e is ApiError && e.isPremiumRequired -> reportPremiumRequired = true
+                    else -> loadError = e.message
+                }
             }
             return
         }
