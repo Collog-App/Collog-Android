@@ -73,6 +73,10 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
     var message by mutableStateOf<String?>(null)
         private set
 
+    /** 오류가 아닌 안내(결제는 됐는데 서버 반영이 늦을 때). */
+    var notice by mutableStateOf<String?>(null)
+        private set
+
     private var generation = UUID.randomUUID()
 
     val isStoreAvailable: Boolean get() = store.isAvailable
@@ -89,6 +93,7 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         entitlement = null
         price = null
         message = null
+        notice = null
         isPaywallPresented = false
     }
 
@@ -123,12 +128,14 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
 
     fun presentPaywall() {
         message = null
+        notice = null
         isPaywallPresented = true
     }
 
     fun dismissPaywall() {
         isPaywallPresented = false
         message = null
+        notice = null
     }
 
     /** 결제 화면이 열릴 때: 요금제를 다시 읽고(켜져 있으면 SDK 도 켠다), 스토어 가격을 아직 모르면 받는다. */
@@ -176,6 +183,7 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         val generation = generation
         isWorking = true
         message = null
+        notice = null
         try {
             val changed = try {
                 action(userId)
@@ -192,7 +200,10 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         }
     }
 
-    /** 구매·복원 직후 `POST …/refresh`. 실패하면(서버가 웹훅으로 곧 알게 된다) 저장된 값이라도 다시 읽는다. */
+    /**
+     * 구매·복원 직후 `POST …/refresh`. 서버가 RevenueCat 확인에 실패했거나(502 `UPSTREAM_ERROR`) 연결이 끊겼으면
+     * 결제 실패로 보이지 않게 `GET` 으로 한 번 더 읽고, 아직 유료로 안 보이면 반영이 늦다고만 알린다(웹훅이 곧 반영한다).
+     */
     private suspend fun refreshAfterStore(environment: AppEnvironment, userId: String, generation: UUID) {
         val refreshed = try {
             environment.api.refreshEntitlement()
@@ -202,7 +213,12 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
             null
         }
         if (generation != this.generation || environment.session.user?.id != userId) return
-        if (refreshed != null) entitlement = refreshed else load(environment)
+        if (refreshed != null) {
+            entitlement = refreshed
+            return
+        }
+        load(environment)
+        if (generation == this.generation && entitlement?.isPaid != true) notice = PURCHASE_PENDING
     }
 
     private fun userId(environment: AppEnvironment): String? {
@@ -214,6 +230,7 @@ class Billing(private val store: PurchaseStore = PurchaseStore.Unavailable) {
         private const val TAG = "CollogBilling"
         const val PURCHASE_FAILED = "결제를 마치지 못했어요. 잠시 뒤 다시 시도해 주세요."
         const val RESTORE_FAILED = "구매를 복원하지 못했어요. 잠시 뒤 다시 시도해 주세요."
+        const val PURCHASE_PENDING = "결제는 완료됐어요. 반영까지 잠시 걸릴 수 있어요."
     }
 }
 

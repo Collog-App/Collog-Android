@@ -51,7 +51,8 @@ class AnalysisEmptyActionTests {
 
     @Test
     fun latestCallSkippedAfterTheMonthlyQuotaHasItsOwnReason() {
-        val skipped = call("ANALYSIS_EXCLUDED", recorded = true).copy(recordingDisabledReason = "ANALYSIS_QUOTA_EXCEEDED")
+        // 서버는 분량 초과 통화를 recorded=false 로 둔다
+        val skipped = call("ANALYSIS_EXCLUDED", recorded = false).copy(recordingDisabledReason = "ANALYSIS_QUOTA_EXCEEDED")
         assertEquals(AnalysisEmptyAction.QuotaExceeded, resolve(calls = listOf(skipped)))
         val consent = call("ANALYSIS_EXCLUDED", recorded = true).copy(recordingDisabledReason = "CONSENT_DENIED")
         assertEquals(AnalysisEmptyAction.Excluded, resolve(calls = listOf(consent)))

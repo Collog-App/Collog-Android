@@ -103,6 +103,7 @@ fun PaywallSheetHost() {
                 }
             }
             billing.message?.let { Text(it, style = CollogType.body02Medium, color = CollogColors.red500) }
+            billing.notice?.let { Text(it, style = CollogType.body02Medium, color = CollogColors.gray700) }
 
             Column(
                 Modifier.fillMaxWidth().padding(top = Spacing.x2),

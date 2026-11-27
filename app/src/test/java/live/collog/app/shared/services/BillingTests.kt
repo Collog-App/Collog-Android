@@ -212,6 +212,33 @@ class BillingTests {
     }
 
     @Test
+    fun purchaseIsNotShownAsFailedWhenTheServerCannotConfirmItYet() = withFixture { fixture, billing ->
+        var current = free
+        fixture.respond = { request ->
+            if (request.url.encodedPath == "/v1/account/entitlement/refresh") {
+                502 to """{"code":"UPSTREAM_ERROR","message":"RevenueCat 확인에 실패했어요"}"""
+            } else {
+                200 to current
+            }
+        }
+        billing.load(fixture.environment)
+        fixture.paths.clear()
+
+        billing.purchase(activity, fixture.environment)
+
+        // 다시 한 번 읽고, 아직 유료로 안 보이면 실패 대신 반영이 늦다는 안내
+        assertEquals(listOf("/v1/account/entitlement/refresh", "/v1/account/entitlement"), fixture.paths.toList())
+        assertNull(billing.message)
+        assertEquals("결제는 완료됐어요. 반영까지 잠시 걸릴 수 있어요.", billing.notice)
+
+        // 그사이 웹훅으로 반영됐으면 안내 없이 바뀐 요금제
+        current = paidByMe
+        billing.purchase(activity, fixture.environment)
+        assertNull(billing.notice)
+        assertTrue(billing.entitlement!!.paidByMe)
+    }
+
+    @Test
     fun cancelledPurchaseLeavesTheScreenAsItWas() {
         val store = FakeStore().apply { outcome = PurchaseOutcome.Cancelled }
         withFixture(store) { fixture, billing ->
