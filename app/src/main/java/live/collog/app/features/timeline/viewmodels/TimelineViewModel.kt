@@ -123,7 +123,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         }
         val state = try {
             // 날짜 없이 받아 앱에서 최근 20건만
-            RecentCallsState.Loaded(RecentCalls.rows(api.calls(parentId)))
+            RecentCallsState.Loaded(RecentCalls.rows(api.calls(parentId), environment.session.user?.id))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

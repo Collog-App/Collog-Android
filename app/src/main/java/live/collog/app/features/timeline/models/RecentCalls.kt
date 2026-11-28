@@ -13,6 +13,8 @@ data class RecentCallRow(
     /** 1분 미만은 초, 그 위는 분(버림) */
     val durationText: String,
     val statusText: String,
+    /** 내가 낀 통화만 연다. 다른 가족끼리 한 통화는 서버가 통화별 분석을 403 으로 막는다. */
+    val isOpenable: Boolean,
 )
 
 /** 「최근 통화」 목록 상태. 그 탭에서 고른 사람의 `/parents/{id}/calls` 한 번으로 채운다. */
@@ -35,14 +37,15 @@ object RecentCalls {
     private val zone: ZoneId = ZoneId.of("Asia/Seoul")
     private val dateFormatter = DateTimeFormatter.ofPattern("M월 d일 (E) a h:mm", Locale.KOREAN)
 
-    /** 최근 것부터 [LIMIT]건. */
-    fun rows(calls: List<CallSummaryDto>): List<RecentCallRow> =
+    /** 최근 것부터 [LIMIT]건. [userId]는 로그인한 나(내가 낀 통화만 누를 수 있다). */
+    fun rows(calls: List<CallSummaryDto>, userId: String?): List<RecentCallRow> =
         calls.sortedByDescending { it.startedAt }.take(LIMIT).map { call ->
             RecentCallRow(
                 callId = call.callId,
                 dateText = dateFormatter.format(call.startedAt.atZone(zone)),
                 durationText = duration(call.durationSec ?: 0),
                 statusText = status(call),
+                isOpenable = userId != null && userId in listOf(call.parentId, call.childId),
             )
         }
 

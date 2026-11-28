@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
 import live.collog.app.features.timeline.models.RecentCallRow
 import live.collog.app.features.timeline.models.RecentCalls
@@ -31,7 +32,7 @@ import live.collog.app.shared.ui.pressable
 
 /**
  * 무료로 잠긴 타임라인 탭의 잠금 안내 아래 「최근 통화」(11-28 용진 결정): 줄마다 날짜·시각, 통화 길이, 분석 상태.
- * 누르면 [onOpen]으로 그 통화의 분석 화면을 연다.
+ * 내가 낀 통화만 누르면 [onOpen]으로 그 통화의 분석 화면을 연다. 다른 가족끼리 한 통화는 꺾쇠 없이 흐리게 둔다.
  */
 @Composable
 fun RecentCallList(
@@ -59,7 +60,7 @@ fun RecentCallList(
             } else {
                 Column(Modifier.specCard(padding = 0.dp, radius = 16.dp)) {
                     state.rows.forEachIndexed { index, row ->
-                        RecentCallLine(row) { onOpen(row.callId) }
+                        RecentCallLine(row, onClick = if (row.isOpenable) ({ onOpen(row.callId) }) else null)
                         if (index != state.rows.lastIndex) SpecDivider()
                     }
                 }
@@ -69,16 +70,21 @@ fun RecentCallList(
 }
 
 @Composable
-private fun RecentCallLine(row: RecentCallRow, onClick: () -> Unit) {
+private fun RecentCallLine(row: RecentCallRow, onClick: (() -> Unit)?) {
     Row(
-        Modifier.fillMaxWidth().pressable(onClick = onClick).padding(start = 15.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+        Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.pressable(onClick = onClick) else Modifier.alpha(0.45f))
+            .padding(start = 15.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(row.dateText, style = specText(Pretendard.Medium, 14f), maxLines = 1)
             Text("${row.durationText} · ${row.statusText}", style = specText(Pretendard.Regular, 12f, SpecColors.muted), maxLines = 1)
         }
-        Spacer(Modifier.width(8.dp))
-        CollogIcon("chevron.right", size = 18.dp, color = SpecColors.chevron)
+        if (onClick != null) {
+            Spacer(Modifier.width(8.dp))
+            CollogIcon("chevron.right", size = 18.dp, color = SpecColors.chevron)
+        }
     }
 }

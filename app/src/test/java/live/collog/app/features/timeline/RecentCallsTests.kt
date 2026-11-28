@@ -10,24 +10,37 @@ import org.junit.Test
 class RecentCallsTests {
     private fun call(
         id: String = "c1",
+        childId: String? = "me",
         state: String = "ANALYZED",
         recorded: Boolean = true,
         startedAt: Instant = Instant.parse("2026-11-27T06:12:00Z"),
         durationSec: Int? = 754,
         reason: String? = null,
     ) = CallSummaryDto(
-        callId = id, parentId = "mom", state = state, startedAt = startedAt,
+        callId = id, parentId = "mom", childId = childId, state = state, startedAt = startedAt,
         durationSec = durationSec, recorded = recorded, recordingDisabledReason = reason,
     )
 
     @Test
     fun rowShowsKoreanDateTimeDurationAndStatus() {
-        val row = RecentCalls.rows(listOf(call())).single()
+        val row = RecentCalls.rows(listOf(call()), userId = "me").single()
         assertEquals("c1", row.callId)
         // 한국 시간 2026-11-27 15:12(금요일)
         assertEquals("11월 27일 (금) 오후 3:12", row.dateText)
         assertEquals("12분", row.durationText)
         assertEquals("분석 완료", row.statusText)
+    }
+
+    @Test
+    fun onlyCallsIWasOnCanBeOpened() {
+        val rows = RecentCalls.rows(listOf(call(id = "mine"), call(id = "theirs", childId = "dad")), userId = "me")
+        assertEquals(mapOf("mine" to true, "theirs" to false), rows.associate { it.callId to it.isOpenable })
+        // 「나」를 고르면 parentId 가 나다
+        val self = CallSummaryDto(
+            callId = "self", parentId = "me", childId = "mom", state = "ANALYZED",
+            startedAt = Instant.parse("2026-11-27T06:12:00Z"), recorded = true,
+        )
+        assertEquals(true, RecentCalls.rows(listOf(self), userId = "me").single().isOpenable)
     }
 
     @Test
@@ -56,7 +69,7 @@ class RecentCallsTests {
     fun onlyTheLatestTwentyNewestFirst() {
         val start = Instant.parse("2026-11-01T00:00:00Z")
         val calls = (0 until 25).map { call(id = "c$it", startedAt = start.plusSeconds(it * 3600L)) }
-        val rows = RecentCalls.rows(calls.shuffled())
+        val rows = RecentCalls.rows(calls.shuffled(), userId = "me")
         assertEquals(20, rows.size)
         assertEquals("c24", rows.first().callId)
         assertEquals("c5", rows.last().callId)
