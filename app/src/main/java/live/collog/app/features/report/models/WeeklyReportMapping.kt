@@ -9,6 +9,7 @@ import live.collog.app.shared.components.stat.CallStat
 import live.collog.app.shared.services.api.CollogTimestamp
 import live.collog.app.shared.services.api.MetricLabel
 import live.collog.app.shared.services.api.ReportDto
+import live.collog.app.shared.services.api.SafetyNoticeDto
 import live.collog.app.shared.services.api.SignalDto
 
 /**
@@ -16,7 +17,7 @@ import live.collog.app.shared.services.api.SignalDto
  * 총 통화 시간·지난주 비교·분당 되물음은 통화 목록이 있어야 계산돼서 [withCallStats]가 채운다.
  */
 fun WeeklyReport.Companion.fromDto(dto: ReportDto, trend: TrendSeries?): WeeklyReport {
-    val notices = safetyNotices(dto)
+    val notices = safetyNotices(dto.safetyNotices)
     if (dto.analyzedCallCount <= 0) return empty.copy(safetyNotices = notices)
 
     val labels = mapOf("symptom" to "증상", "medication" to "복약", "activity" to "활동", "sleep" to "수면")
@@ -66,9 +67,12 @@ fun WeeklyReport.Companion.fromDto(dto: ReportDto, trend: TrendSeries?): WeeklyR
     )
 }
 
-/** 서버 고정 문구 그대로. 빈 문구는 버린다. 통화 날짜는 기기 시간대와 상관없이 Asia/Seoul 로 센다. */
-private fun safetyNotices(dto: ReportDto): List<SafetyNotice> =
-    dto.safetyNotices.filter { it.text.isNotBlank() }.map { notice ->
+/**
+ * 서버 고정 문구 그대로. 빈 문구는 버린다. 통화 날짜는 기기 시간대와 상관없이 Asia/Seoul 로 센다.
+ * 리포트 본문과 무료로 잠긴 리포트 탭(`/safety-notices`)이 같이 쓴다.
+ */
+fun safetyNotices(notices: List<SafetyNoticeDto>): List<SafetyNotice> =
+    notices.filter { it.text.isNotBlank() }.map { notice ->
         val day = notice.observedAt?.let(CollogTimestamp::parse)?.atZone(HealthDailyCalculator.zone)?.toLocalDate()
         SafetyNotice(
             callId = notice.callId,

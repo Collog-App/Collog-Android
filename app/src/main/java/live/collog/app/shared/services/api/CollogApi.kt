@@ -210,6 +210,12 @@ class CollogApi(val client: CollogApiClient) {
         return client.send(ApiEndpoint(path = "/v1/parents/$parentId/reports", query = query))
     }
 
+    /** 최근 [days]일의 응급 안내. 무료도 열린다(공유를 껐으면 403, 옛 서버는 404). */
+    suspend fun safetyNotices(parentId: String, days: Int = 14): List<SafetyNoticeDto> =
+        client.send<SafetyNoticesResponse>(
+            ApiEndpoint(path = "/v1/parents/$parentId/safety-notices", query = listOf("days" to days.toString())),
+        ).safetyNotices
+
     suspend fun baselines(parentId: String): List<BaselineDto> =
         client.send<BaselinesResponse>(ApiEndpoint(path = "/v1/parents/$parentId/baseline")).baselines
 

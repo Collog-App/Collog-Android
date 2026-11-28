@@ -54,6 +54,7 @@ import live.collog.app.features.health.views.LifeRecordCard
 import live.collog.app.features.health.views.SafetyNoticeCard
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.report.models.ReportState
+import live.collog.app.features.report.models.SafetyNotice
 import live.collog.app.features.report.views.ReportContent
 import live.collog.app.features.settings.views.FamilyMembersSettingsScreen
 import live.collog.app.features.timeline.models.CallTimelineEntry
@@ -62,6 +63,7 @@ import live.collog.app.features.timeline.viewmodels.TimelineViewModel
 import live.collog.app.features.timeline.views.components.CallTimelineCard
 import live.collog.app.features.timeline.views.components.CallTimelineDateHeader
 import live.collog.app.features.timeline.views.components.CallTimelineRail
+import live.collog.app.features.timeline.views.components.RecentCallList
 import live.collog.app.features.timeline.views.components.TimelineWeekHeader
 import live.collog.app.features.timeline.views.components.ViewerBadgeChip
 import live.collog.app.features.timeline.views.components.ViewerProfileHeader
@@ -223,6 +225,10 @@ private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAcce
     OnChange(environment.reportDataRevision) { _, _ ->
         scope.launch { viewModel.refresh(environment, forceReload = true) }
     }
+    // 잠긴 탭에서도 보이는 것(응급 안내·최근 통화)은 잠겼을 때와 보는 사람이 바뀔 때 읽는다
+    LaunchedEffect(isLocked, viewModel.selectedContactId) {
+        if (isLocked) viewModel.loadLockedContent(environment)
+    }
     // 구매·복원으로 잠금이 풀리면 무료라 막혔던(402) 주를 다시 읽는다
     OnChange(isLocked) { wasLocked, locked ->
         if (wasLocked && !locked) scope.launch { viewModel.refresh(environment, forceReload = true) }
@@ -348,27 +354,31 @@ private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAcce
         }
     }
 
+    /** 응급 안내 묶음(11-08 가드레일). 누르면 그 통화의 분석 화면. 무료로 잠긴 리포트 탭 맨 위에도 같은 카드로 둔다. */
+    @Composable
+    fun SafetyNotices(notices: List<SafetyNotice>) {
+        if (notices.isEmpty()) return
+        Column(
+            Modifier.padding(horizontal = Spacing.x5).padding(top = Spacing.x2),
+            verticalArrangement = Arrangement.spacedBy(Spacing.x2),
+        ) {
+            notices.forEach { notice ->
+                SafetyNoticeCard(
+                    notice.text,
+                    if (notice.callId.isBlank()) Modifier else Modifier.pressable { navigation.push(CallAnalysisRoute(notice.callId)) },
+                    caption = notice.dayText,
+                )
+            }
+        }
+    }
+
     @Composable
     fun ReportPageContent(page: TimelineWeekPage) {
         val reportError = page.reportError
         val timelineError = page.timelineError
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.x3)) {
             // 응급 안내(11-08 가드레일)는 리포트 맨 위. 누르면 그 통화의 분석 화면을 연다
-            val notices = if (reportError == null) page.report.safetyNotices else emptyList()
-            if (notices.isNotEmpty()) {
-                Column(
-                    Modifier.padding(horizontal = Spacing.x5).padding(top = Spacing.x2),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.x2),
-                ) {
-                    notices.forEach { notice ->
-                        SafetyNoticeCard(
-                            notice.text,
-                            if (notice.callId.isBlank()) Modifier else Modifier.pressable { navigation.push(CallAnalysisRoute(notice.callId)) },
-                            caption = notice.dayText,
-                        )
-                    }
-                }
-            }
+            SafetyNotices(if (reportError == null) page.report.safetyNotices else emptyList())
 
             if (reportError != null) {
                 ErrorContent(reportError, page.offset)
@@ -462,7 +472,9 @@ private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAcce
     CompositionLocalProvider(LocalViewerAccent provides accent) {
     CollapsingHeaderScrollView(
         title = displayTitle,
-        onRefresh = { viewModel.refresh(environment, forceReload = true) },
+        onRefresh = {
+            if (isLocked) viewModel.loadLockedContent(environment) else viewModel.refresh(environment, forceReload = true)
+        },
         scrollReset = tabManager.reselectionCount + memberSelectionCount,
         showsScrollToTopButton = tab == MainTab.Timeline,
         large = {
@@ -488,7 +500,16 @@ private fun ReportTimelineRoot(initialTabIndex: Int, onAccentChange: (ViewerAcce
     ) {
         Column(Modifier.padding(bottom = Spacing.x8), verticalArrangement = Arrangement.spacedBy(Spacing.x3)) {
             if (isLocked) {
+                // 무료로 잠긴 탭(11-28 용진): 리포트 탭은 응급 안내를 맨 위에, 타임라인 탭은 잠금 안내 아래 「최근 통화」만
+                if (tab == MainTab.Report) SafetyNotices(viewModel.lockedSafetyNotices)
                 PremiumLockedState(onLearnMore = billing::presentPaywall)
+                if (tab == MainTab.Timeline) {
+                    RecentCallList(
+                        viewModel.recentCalls,
+                        onOpen = { navigation.push(CallAnalysisRoute(it)) },
+                        onRetry = { scope.launch { viewModel.loadLockedContent(environment) } },
+                    )
+                }
             } else if (tab == MainTab.Timeline) {
                 // 타임라인 본문에서 옆으로 밀면 이전·다음 사람으로 바뀐다. 리포트는 주차 가로 넘기기가 있어 머리말에서만 바꾼다
                 Column(

@@ -67,3 +67,7 @@ data class SafetyNoticeDto(
     val observedAt: String? = null,
     val text: String = "",
 )
+
+/** `GET /v1/parents/{id}/safety-notices?days=14`: 요금제와 상관없이 보이는 응급 안내(리포트의 `safetyNotices` 와 같은 항목). */
+@Serializable
+data class SafetyNoticesResponse(val safetyNotices: List<SafetyNoticeDto> = emptyList())

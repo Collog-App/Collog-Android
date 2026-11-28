@@ -10,11 +10,15 @@ import kotlinx.coroutines.coroutineScope
 import live.collog.app.config.AppEnvironment
 import live.collog.app.features.health.models.LifeRecord
 import live.collog.app.features.home.models.FamilyContact
+import live.collog.app.features.report.models.SafetyNotice
 import live.collog.app.features.report.models.WeeklyReport
 import live.collog.app.features.report.models.fromDto
+import live.collog.app.features.report.models.safetyNotices
 import live.collog.app.features.report.models.withCallStats
 import live.collog.app.features.timeline.models.CallAnalysisBundle
 import live.collog.app.features.timeline.models.CallTimelineEntry
+import live.collog.app.features.timeline.models.RecentCalls
+import live.collog.app.features.timeline.models.RecentCallsState
 import live.collog.app.features.timeline.models.TimelineWeekPage
 import live.collog.app.features.timeline.models.WeekBounds
 import live.collog.app.features.timeline.models.WeeklySpeechHistory
@@ -39,6 +43,14 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
     var selectedRelation by mutableStateOf<String?>(null)
         private set
     var weekOffset by mutableIntStateOf(0)
+        private set
+
+    /** 무료로 잠긴 타임라인 탭의 「최근 통화」(11-28 용진 결정). */
+    var recentCalls by mutableStateOf<RecentCallsState>(RecentCallsState.Loading)
+        private set
+
+    /** 무료로 잠긴 리포트 탭 맨 위의 응급 안내(최근 14일). 없거나 못 받으면 빈 목록이라 그리지 않는다. */
+    var lockedSafetyNotices by mutableStateOf<List<SafetyNotice>>(emptyList())
         private set
 
     /** 칩에서 "나"를 직접 골랐는지. 가족이 없어 대신 고른 "나"는 가족 목록이 오면 첫 가족으로 돌아간다. */
@@ -88,8 +100,41 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         selectedRelation = contact.relation
         weekOffset = 0
         pages = emptyMap()
+        clearLockedContent()
         loading.clear()
         contentGeneration += 1
+    }
+
+    /**
+     * 무료로 잠긴 탭에서도 보이는 것: 리포트 탭은 응급 안내(`/safety-notices`), 타임라인 탭은 「최근 통화」(`/calls` 한 번).
+     * 잠긴 탭의 다른 불러오기([refresh]·[loadPage])는 건너뛴다.
+     */
+    suspend fun loadLockedContent(environment: AppEnvironment) {
+        if (environment.settings.isGuestMode) return
+        resolveSelection(environment)
+        val parentId = selectedContact(environment)?.userId ?: return
+        val generation = contentGeneration
+        val api = environment.api
+        if (selectedTabIndex == 0) {
+            // 옛 서버(404)·오류·공유 꺼짐(403)이면 조용히 그리지 않는다
+            val notices = orNull { safetyNotices(api.safetyNotices(parentId)) } ?: emptyList()
+            if (generation == contentGeneration) lockedSafetyNotices = notices
+            return
+        }
+        val state = try {
+            // 날짜 없이 받아 앱에서 최근 20건만
+            RecentCallsState.Loaded(RecentCalls.rows(api.calls(parentId)))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (e.isNotShared) RecentCallsState.NotShared else RecentCallsState.Failed(e.message ?: "요청을 처리하지 못했어요")
+        }
+        if (generation == contentGeneration) recentCalls = state
+    }
+
+    private fun clearLockedContent() {
+        recentCalls = RecentCallsState.Loading
+        lockedSafetyNotices = emptyList()
     }
 
     /**
@@ -271,6 +316,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
                 selectedContactId = null
                 selectedRelation = null
                 pages = emptyMap()
+                clearLockedContent()
                 loading.clear()
                 contentGeneration += 1
             }
@@ -279,6 +325,7 @@ class TimelineViewModel(selectedTabIndex: Int = 1) {
         }
         if (selectedContactId != contact.id) {
             pages = emptyMap()
+            clearLockedContent()
             loading.clear()
             contentGeneration += 1
         }

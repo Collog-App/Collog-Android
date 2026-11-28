@@ -5,6 +5,7 @@ import kotlinx.coroutines.test.runTest
 import live.collog.app.TestEnvironment
 import live.collog.app.features.home.models.FamilyContact
 import live.collog.app.features.report.models.ReportState
+import live.collog.app.features.timeline.models.RecentCallsState
 import live.collog.app.features.timeline.models.TimelineWeekPage
 import live.collog.app.features.timeline.viewmodels.TimelineViewModel
 import okhttp3.Request
@@ -345,6 +346,82 @@ class TimelineViewModelTests {
         assertFalse(page.timelineNotShared)
         assertNull(page.timelineError)
         assertEquals(1, page.entries.size)
+    }
+
+    /** 결제가 켜져 있고 무료인 요금제로 잠근다. 다른 요청은 지금 답하던 대로. */
+    private suspend fun lock(fixture: TestEnvironment) {
+        val base = fixture.respond
+        fixture.respond = { request ->
+            if (request.path() == "/v1/account/entitlement") {
+                200 to """{"billingEnabled":true,"plan":"FREE","source":null}"""
+            } else {
+                base(request)
+            }
+        }
+        fixture.environment.billing.load(fixture.environment)
+        assertTrue(fixture.environment.billing.isLocked)
+        fixture.paths.clear()
+        fixture.requests.clear()
+    }
+
+    @Test
+    fun lockedTimelineAsksTheRecentCallsOnceWithoutDates() = withFixture { fixture ->
+        serve(fixture)
+        lock(fixture)
+        val model = TimelineViewModel(selectedTabIndex = 1)
+        model.refresh(fixture.environment)
+
+        model.loadLockedContent(fixture.environment)
+
+        val request = fixture.requests.single()
+        assertEquals("/v1/parents/mom/calls", request.path())
+        assertNull(request.url.queryParameter("from"))
+        val rows = (model.recentCalls as RecentCallsState.Loaded).rows
+        assertEquals(listOf("a", "b"), rows.map { it.callId }.sorted())
+    }
+
+    @Test
+    fun lockedTimelineShowsSharingTurnedOffForRecentCalls() = withFixture { fixture ->
+        serve(fixture)
+        lock(fixture)
+        val base = fixture.respond
+        fixture.respond = { request ->
+            if (request.path().endsWith("/calls")) 403 to """{"code":"SCOPE_DENIED","message":"열람 권한이 없는 항목입니다"}""" else base(request)
+        }
+        val model = TimelineViewModel(selectedTabIndex = 1)
+        model.loadLockedContent(fixture.environment)
+        assertEquals(RecentCallsState.NotShared, model.recentCalls)
+    }
+
+    @Test
+    fun lockedReportShowsRecentSafetyNoticesAndStaysQuietOnOldServers() = withFixture { fixture ->
+        serve(fixture)
+        lock(fixture)
+        val base = fixture.respond
+        fixture.respond = { request ->
+            if (request.path().endsWith("/safety-notices")) {
+                200 to """{"safetyNotices":[{"callId":"a","observedAt":"2026-11-27T15:30:00Z","text":"응급 안내 문구"},{"callId":"b","text":" "}]}"""
+            } else {
+                base(request)
+            }
+        }
+        val model = TimelineViewModel(selectedTabIndex = 0)
+        model.loadLockedContent(fixture.environment)
+
+        val request = fixture.requests.single()
+        assertEquals("/v1/parents/mom/safety-notices", request.path())
+        assertEquals("14", request.url.queryParameter("days"))
+        // 리포트와 같은 카드 문구(빈 문구는 버리고, 날짜는 한국 시간)
+        val notice = model.lockedSafetyNotices.single()
+        assertEquals("a", notice.callId)
+        assertEquals("응급 안내 문구", notice.text)
+        assertEquals("11월 28일 통화", notice.dayText)
+
+        // 옛 서버(404)면 아무것도 그리지 않는다
+        fixture.respond = base
+        val old = TimelineViewModel(selectedTabIndex = 0)
+        old.loadLockedContent(fixture.environment)
+        assertTrue(old.lockedSafetyNotices.isEmpty())
     }
 
     @Test
